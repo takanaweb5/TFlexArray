@@ -12,6 +12,18 @@ type
       TDimension = record
         Low, High, Stride: NativeInt;
       end;
+    type
+    // 内部専用の列挙子。これなら制約エラーも出ず、ポインタを直接スキャンできる。
+    TFlexEnumerator = class(TEnumerator<T>)
+      private
+        FHead: Pointer;
+        FTotalSize: NativeInt;
+        FIndex: NativeInt;
+      public
+        constructor Create(AHead: Pointer; ASize: NativeInt);
+        function GetCurrent: T;
+        function MoveNext: Boolean;
+      end;
   private
     FData: TArray<T>;      // 実データ保持用
     FHead: Pointer;        // 物理先頭ポインタ
@@ -125,10 +137,33 @@ function TFlexAny<T>.LBound(Dim: Integer): Integer; begin Result := FDims[Dim - 
 function TFlexAny<T>.UBound(Dim: Integer): Integer; begin Result := FDims[Dim - 1].High; end;
 function TFlexAny<T>.Dimensions: Integer; begin Result := Length(FDims); end;
 
+{ TFlexAny<T>.TFlexEnumerator }
+
+constructor TFlexAny<T>.TFlexEnumerator.Create(AHead: Pointer; ASize: NativeInt);
+begin
+  FHead := AHead;
+  FTotalSize := ASize;
+  FIndex := -1;
+end;
+
+function TFlexAny<T>.TFlexEnumerator.GetCurrent: T;
+begin
+  // ポインタから直接アクセス（TArray偽装）
+  Result := TArray<T>(FHead)[FIndex];
+end;
+
+function TFlexAny<T>.TFlexEnumerator.MoveNext: Boolean;
+begin
+  Inc(FIndex);
+  Result := FIndex < FTotalSize;
+end;
+
+{ TFlexAny<T> 本体 }
+
 function TFlexAny<T>.GetEnumerator: TEnumerator<T>;
 begin
-  // 連続したメモリブロック全体をイテレート可能
-  Result := TEnumerable<T>.ToArrayEnumerator(TArray<T>(FHead));
+  // 参照でもコピーでも、FHead さえあればこの Enumerator は動く
+  Result := TFlexEnumerator.Create(FHead, FTotalSize);
 end;
 
 end.
