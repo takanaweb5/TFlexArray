@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<BorlandProject>
+	<Transactions>
+    <Transaction>2026/02/11 10:32:21.000.849,=C:\Users\takah\OneDrive\ドキュメント\Embarcadero\Studio\Projects\Unit1.pas</Transaction>
+    <Transaction>2026/02/11 10:38:12.000.689,=C:\Users\takah\OneDrive\ドキュメント\Embarcadero\Studio\Projects\Unit1.pas</Transaction>
+    <Transaction>2026/02/11 10:41:50.000.779,=C:\Users\takah\OneDrive\ドキュメント\Embarcadero\Studio\Projects\Unit2.pas</Transaction>
+    <Transaction>2026/02/11 10:42:45.000.457,C:\Users\takah\OneDrive\ドキュメント\Embarcadero\Studio\Projects\Unit2.pas=C:\Users\takah\OneDrive\ドキュメント\Embarcadero\Studio\Projects\FlexAnyCollections.pas</Transaction>
+    <Transaction>2026/02/11 10:44:44.000.756,C:\Users\takah\OneDrive\ドキュメント\Embarcadero\Studio\Projects\FlexAnyCollections.pas=C:\Users\takah\OneDrive\ドキュメント\Embarcadero\Studio\Projects\TFlexArray\TFlexArray.pas</Transaction>
+    <Transaction>2026/02/11 10:45:42.000.358,C:\Users\takah\OneDrive\ドキュメント\Embarcadero\Studio\Projects\Unit1.pas=C:\Users\takah\OneDrive\ドキュメント\Embarcadero\Studio\Projects\TFlexArray\Unit1.pas</Transaction>
+    <Transaction>2026/02/11 10:45:42.000.358,C:\Users\takah\OneDrive\ドキュメント\Embarcadero\Studio\Projects\Unit1.dfm=C:\Users\takah\OneDrive\ドキュメント\Embarcadero\Studio\Projects\TFlexArray\Unit1.dfm</Transaction>
+    <Transaction>2026/02/11 10:45:53.000.092,C:\Users\takah\OneDrive\ドキュメント\Embarcadero\Studio\Projects\Project1.dproj=C:\Users\takah\OneDrive\ドキュメント\Embarcadero\Studio\Projects\TFlexArray\Project1.dproj</Transaction>
+  </Transactions>
+</BorlandProject>
