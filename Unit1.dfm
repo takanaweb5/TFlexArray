@@ -24,6 +24,8 @@ object Form1: TForm1
     Lines.Strings = (
       'Memo1')
     TabOrder = 0
+    ExplicitWidth = 622
+    ExplicitHeight = 394
   end
   object Button1: TButton
     Left = 8
@@ -34,5 +36,6 @@ object Form1: TForm1
     Caption = 'Button1'
     TabOrder = 1
     OnClick = Button1Click
+    ExplicitTop = 400
   end
 end

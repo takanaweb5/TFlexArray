@@ -30,68 +30,76 @@ type
 // --- テスト用サブ関数群 ---
 procedure Log(const S: string);
 begin
+  OutputDebugString(PChar(S));
   Form1.Memo1.Lines.Add(S);
 end;
 
 
-// ① 新規生成のテスト（[]なし）
+// ① 新規生成のテスト
 procedure Test_New();
 var
   A: TFlexAny<Double>;
 begin
   Log('[Test: New]');
-  A := TFlexAny<Double>.Create([1990, 1991, 1, 2]);
+  A := TFlexAny<Double>.Create([[1990, 1991], [1, 2]]);
   A[1990, 1] := 10.5;
   A[1991, 2] := 99.9;
   Log(Format('  A[1990, 1] = %.1f', [A[1990, 1]]));
   Log(Format('  A[1991, 2] = %.1f', [A[1991, 2]]));
+  Log('  --- for-in enumeration ---');
+  for var D in A do
+    Log(Format('    Value: %.1f', [D]));
+end;
+
+procedure Test_3D_New();
+var
+  A: TFlexAny<Double>;
+  V: Double;
+begin
+  Log('[Test: 3D New (1990-1991, 1-2, 10-11)]');
+
+  // 3次元配列の生成： [年, 月, 項目ID]
+  // 形状: [[1990, 1991], [1, 2], [10, 11]]
+  A := TFlexAny<Double>.Create([[1990, 1991], [1, 3], [10, 11]]);
+
+  // データの代入（離れた場所を突く）
+  A[1990, 1, 10] := 10.5;
+  A[1990, 3, 11] := 20.0;
+  A[1991, 2, 11] := 99.9;
+
+  Log(Format('  A[1990, 1, 10] = %.1f', [A[1990, 1, 10]]));
+  Log(Format('  A[1990, 3, 11] = %.1f', [A[1990, 3, 11]]));
+  Log(Format('  A[1991, 2, 11] = %.1f', [A[1991, 2, 11]]));
+
+  // 未代入箇所（Delphiの動的配列なので初期値は0）
+  Log(Format('  A[1991, 1, 10] = %.1f (Empty)', [A[1991, 1, 10]]));
+
+  Log('  --- for-in enumeration (All 8 elements) ---');
+  // 3次元でも内部は一本のポインタなので、列挙子は全要素を高速に走破します
+  for V in A do
+//    if V <> 0 then
+      Log(Format('    Found Value: %.1f', [V]));
 end;
 
 // ② 1次元参照のテスト
 procedure Test_1D_Ref();
 var
-  Src: TArray<Integer>;
-  A: TFlexAny<Integer>;
+  Src: TArray<string>;
+  A: TFlexAny<string>;
 begin
+  Src := 'a,b,c,d,e'.Split([',']);
+
   Log('[Test: 1D Reference]');
-  SetLength(Src, 5);
-  A := TFlexAny<Integer>.Create(Src, 1);
-  Src[0] := 100;
-  Log(Format('  Src[0] changed to 100 -> A[1] = %d', [A[1]]));
-  A[5] := 500;
-  Log(Format('  A[5] changed to 500   -> Src[4] = %d', [Src[4]]));
-end;
+//  SetLength(Src, 5);
+  A := TFlexAny<string>.Create(Src, 1);
+  Src[0] := '100';
+  Log(Format('  Src[0] changed to 100 -> A[1] = %s', [A[1]]));
+  A[5] := '500';
+  Log(Format('  A[5] changed to 500   -> Src[4] = %s', [Src[4]]));
 
-// ③ 2次元参照のテスト
-procedure Test_2D_Ref();
-var
-  Src: TArray<TArray<Double>>;
-  A: TFlexAny<Double>;
-begin
-  Log('[Test: 2D Reference]');
-  SetLength(Src, 2, 2);
-  A := TFlexAny<Double>.Create(Src, 100, 200);
-  Src[1, 1] := 123.45;
-  Log(Format('  Src[1,1] = 123.45 -> A[101, 201] = %.2f', [A[101, 201]]));
-end;
-
-// ④ 3次元参照のテスト（for-in）
-procedure Test_3D_Ref();
-var
-  Src: TArray<TArray<TArray<Integer>>>;
-  A: TFlexAny<Integer>;
-  V, Total: Integer;
-begin
-  Log('[Test: 3D Reference & Enumerator]');
-  SetLength(Src, 2, 2, 2);
-  A := TFlexAny<Integer>.Create(Src, 0, 0, 0);
-  // 全要素に 1 を代入
-  A[0,0,0] := 1; A[0,0,1] := 1; A[0,1,0] := 1; A[0,1,1] := 1;
-  A[1,0,0] := 1; A[1,0,1] := 1; A[1,1,0] := 1; A[1,1,1] := 1;
-
-  Total := 0;
-  for V in A do Inc(Total, V);
-  Log(Format('  3D Total Sum (for-in): %d (Expected: 8)', [Total]));
+  Log('  --- for-in enumeration ---');
+  for var D in A do
+    Log(Format('    Value: %s', [D]));
 end;
 
 // --- Form のイベントハンドラ ---
@@ -103,9 +111,7 @@ begin
 
   Test_New;        // 新規作成
   Test_1D_Ref;    // 1次元参照
-  Test_2D_Ref;    // 2次元参照
-  Test_3D_Ref;    // 3次元参照
-
+  Test_3D_New;
   Memo1.Lines.Add('--- テスト完了 ---');
 end;
 

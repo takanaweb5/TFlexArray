@@ -13,15 +13,16 @@ type
         Low, High, Stride: NativeInt;
       end;
     type
-    // 内部専用の列挙子。これなら制約エラーも出ず、ポインタを直接スキャンできる。
-    TFlexEnumerator = class(TEnumerator<T>)
+      // 内部専用の列挙子。これなら制約エラーも出ず、ポインタを直接スキャンできる。
+      TFlexEnumerator<V> = class
       private
         FHead: Pointer;
         FTotalSize: NativeInt;
         FIndex: NativeInt;
+        function GetCurrent: V;
       public
         constructor Create(AHead: Pointer; ASize: NativeInt);
-        function GetCurrent: T;
+        property Current: V read GetCurrent;
         function MoveNext: Boolean;
       end;
   private
@@ -30,24 +31,16 @@ type
     FDims: TArray<TDimension>;
     FTotalSize: NativeInt;
 
-    procedure SetupReference(APtr: Pointer; const ASizes, ALows: array of Integer; ACopy: Boolean);
     function GetOffset(const Indices: array of Integer): NativeInt;
     function GetValue(const Indices: array of Integer): T;
     procedure SetValue(const Indices: array of Integer; const Value: T);
   public
-    // ① 新規生成： A := TFlexAny<Double>.Create(1, 10, 1, 12);
-    constructor Create(const Ranges: array of const); overload;
-
-    // ②〜④ 既存配列の偽装/コピー： A := TFlexAny<Double>.Create(Src, 1, 1);
-    constructor Create(var Src: TArray<T>; L1: Integer; ACopy: Boolean = False); overload;
-    constructor Create(var Src: TArray<TArray<T>>; L1, L2: Integer; ACopy: Boolean = False); overload;
-    constructor Create(var Src: TArray<TArray<TArray<T>>>; L1, L2, L3: Integer; ACopy: Boolean = False); overload;
-
+    constructor Create(const Ranges: array of TArray<Integer>); overload;
+    constructor Create(var Src: TArray<T>; ALow: Integer; ACopy: Boolean = False); overload;
     function LBound(Dim: Integer = 1): Integer;
     function UBound(Dim: Integer = 1): Integer;
     function Dimensions: Integer;
-    function GetEnumerator: TEnumerator<T>;
-
+    function GetEnumerator: TFlexEnumerator<T>;
     property Items[const Indices: array of Integer]: T read GetValue write SetValue; default;
   end;
 
@@ -55,65 +48,51 @@ implementation
 
 { TFlexAny<T> }
 
-procedure TFlexAny<T>.SetupReference(APtr: Pointer; const ASizes, ALows: array of Integer; ACopy: Boolean);
+// ① 新規生成（多次元）： A := TFlexAny<Double>.Create([[1, 10], [1, 12]]);
+constructor TFlexAny<T>.Create(const Ranges: array of TArray<Integer>);
 var
-  i: Integer;
+  i, DimCount: Integer;
   CurrentStride: NativeInt;
 begin
-  SetLength(FDims, Length(ASizes));
+  DimCount := Length(Ranges);
+  SetLength(FDims, DimCount);
+
+  // 多次元の設計図を後ろから組み立てる
   CurrentStride := 1;
-  // Stride（歩幅）を後ろから順に確定
-  for i := High(ASizes) downto 0 do
+  for i := DimCount - 1 downto 0 do
   begin
-    FDims[i].Low := ALows[i];
-    FDims[i].High := ALows[i] + ASizes[i] - 1;
+    FDims[i].Low := Ranges[i][0];
+    FDims[i].High := Ranges[i][1];
     FDims[i].Stride := CurrentStride;
-    CurrentStride := CurrentStride * ASizes[i];
+    CurrentStride := CurrentStride * (FDims[i].High - FDims[i].Low + 1);
   end;
   FTotalSize := CurrentStride;
+
+  // メモリ確保
+  SetLength(FData, FTotalSize);
+  FHead := @FData[0];
+end;
+
+// ② 1次元既存偽装/コピー： A := TFlexAny<Double>.Create(Src, 1);
+constructor TFlexAny<T>.Create(var Src: TArray<T>; ALow: Integer; ACopy: Boolean = False);
+begin
+  // 1次元に特化し、ループも計算関数も通らず一撃でセット
+  FTotalSize := Length(Src);
+  SetLength(FDims, 1);
+  FDims[0].Low := ALow;
+  FDims[0].High := ALow + FTotalSize - 1;
+  FDims[0].Stride := 1;
 
   if ACopy then
   begin
     SetLength(FData, FTotalSize);
     FHead := @FData[0];
-    if (FTotalSize > 0) and (APtr <> nil) then
-      Move(APtr^, FHead^, FTotalSize * SizeOf(T));
+    if FTotalSize > 0 then
+      Move(Src[0], FHead^, FTotalSize * SizeOf(T));
   end
   else
-    FHead := APtr;
+    FHead := Pointer(Src);
 end;
-
-constructor TFlexAny<T>.Create(const Ranges: array of const);
-var
-  i, DimCount: Integer;
-  Lows, Sizes: TArray<Integer>;
-begin
-  DimCount := Length(Ranges) div 2;
-  SetLength(Lows, DimCount);
-  SetLength(Sizes, DimCount);
-  for i := 0 to DimCount - 1 do
-  begin
-    Lows[i] := Ranges[i * 2].VInteger;
-    Sizes[i] := Ranges[i * 2 + 1].VInteger - Lows[i] + 1;
-  end;
-  SetupReference(nil, Sizes, Lows, True);
-end;
-
-constructor TFlexAny<T>.Create(var Src: TArray<T>; L1: Integer; ACopy: Boolean);
-begin
-  SetupReference(@Src[0], [Length(Src)], [L1], ACopy);
-end;
-
-constructor TFlexAny<T>.Create(var Src: TArray<TArray<T>>; L1, L2: Integer; ACopy: Boolean);
-begin
-  SetupReference(@Src[0, 0], [Length(Src), Length(Src[0])], [L1, L2], ACopy);
-end;
-
-constructor TFlexAny<T>.Create(var Src: TArray<TArray<TArray<T>>>; L1, L2, L3: Integer; ACopy: Boolean);
-begin
-  SetupReference(@Src[0, 0, 0], [Length(Src), Length(Src[0]), Length(Src[0, 0])], [L1, L2, L3], ACopy);
-end;
-
 function TFlexAny<T>.GetOffset(const Indices: array of Integer): NativeInt;
 var i: Integer;
 begin
@@ -139,20 +118,20 @@ function TFlexAny<T>.Dimensions: Integer; begin Result := Length(FDims); end;
 
 { TFlexAny<T>.TFlexEnumerator }
 
-constructor TFlexAny<T>.TFlexEnumerator.Create(AHead: Pointer; ASize: NativeInt);
+constructor TFlexAny<T>.TFlexEnumerator<V>.Create(AHead: Pointer; ASize: NativeInt);
 begin
   FHead := AHead;
   FTotalSize := ASize;
   FIndex := -1;
 end;
 
-function TFlexAny<T>.TFlexEnumerator.GetCurrent: T;
+function TFlexAny<T>.TFlexEnumerator<V>.GetCurrent: V;
 begin
   // ポインタから直接アクセス（TArray偽装）
-  Result := TArray<T>(FHead)[FIndex];
+  Result := TArray<V>(FHead)[FIndex];
 end;
 
-function TFlexAny<T>.TFlexEnumerator.MoveNext: Boolean;
+function TFlexAny<T>.TFlexEnumerator<V>.MoveNext: Boolean;
 begin
   Inc(FIndex);
   Result := FIndex < FTotalSize;
@@ -160,10 +139,10 @@ end;
 
 { TFlexAny<T> 本体 }
 
-function TFlexAny<T>.GetEnumerator: TEnumerator<T>;
+function TFlexAny<T>.GetEnumerator: TFlexEnumerator<T>;
 begin
   // 参照でもコピーでも、FHead さえあればこの Enumerator は動く
-  Result := TFlexEnumerator.Create(FHead, FTotalSize);
+  Result := TFlexEnumerator<T>.Create(FHead, FTotalSize);
 end;
 
 end.
