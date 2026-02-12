@@ -91,7 +91,7 @@ begin
 
   Log('[Test: 1D Reference]');
 //  SetLength(Src, 5);
-  A := TFlexAny<string>.Create(Src, 1);
+  A := TFlexAny<string>.Create([1, length(Src)], Src);
   Src[0] := '100';
   Log(Format('  Src[0] changed to 100 -> A[1] = %s', [A[1]]));
   A[5] := '500';
