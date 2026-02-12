@@ -58,20 +58,35 @@ function TFlexAny<T>.InternalSetup(const Ranges: array of TArray<Integer>): Nati
 var
   i: Integer;
   CurrentStride: NativeInt;
+  L, H: Integer;
 begin
   SetLength(FDims, Length(Ranges));
   CurrentStride := 1;
+
   // 後ろの次元から歩幅を計算することで多次元に対応
   for i := High(Ranges) downto 0 do
   begin
-    FDims[i].Low    := Ranges[i][0];
-    FDims[i].High   := Ranges[i][1];
+    // 引数の配列が [Low, High] のペアになっているか念のためチェック
+    Assert(Length(Ranges[i]) = 2,
+      Format('TFlexAny: 第 %d 次元の指定が [Low, High] のペアではありません。', [i + 1]));
+
+    L := Ranges[i][0];
+    H := Ranges[i][1];
+
+    // ★ ここで開始 > 終了をチェック
+    Assert(L <= H,
+      Format('TFlexAny: 第 %d 次元の範囲が不正です (Low:%d > High:%d)', [i + 1, L, H]));
+
+    FDims[i].Low    := L;
+    FDims[i].High   := H;
     FDims[i].Stride := CurrentStride;
-    CurrentStride   := CurrentStride * (FDims[i].High - FDims[i].Low + 1);
+
+    // 全要素数を累積計算
+    CurrentStride := CurrentStride * (H - L + 1);
   end;
+
   Result := CurrentStride;
 end;
-
 { --- 公開コンストラクタ --- }
 
 // ① 新規生成（１次元限定）  例：TFlexAny<Double>.Create([1, 10]);
