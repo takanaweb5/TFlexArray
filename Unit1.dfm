@@ -2,8 +2,8 @@ object Form1: TForm1
   Left = 0
   Top = 0
   Caption = 'Form1'
-  ClientHeight = 441
-  ClientWidth = 624
+  ClientHeight = 537
+  ClientWidth = 760
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
@@ -11,25 +11,24 @@ object Form1: TForm1
   Font.Name = 'Segoe UI'
   Font.Style = []
   DesignSize = (
-    624
-    441)
+    760
+    537)
   TextHeight = 15
   object Memo1: TMemo
     Left = 0
     Top = 0
-    Width = 624
-    Height = 402
+    Width = 760
+    Height = 498
     Align = alTop
     Anchors = [akLeft, akTop, akRight, akBottom]
     Lines.Strings = (
       'Memo1')
+    ScrollBars = ssVertical
     TabOrder = 0
-    ExplicitWidth = 622
-    ExplicitHeight = 394
   end
   object Button1: TButton
     Left = 8
-    Top = 408
+    Top = 504
     Width = 75
     Height = 25
     Anchors = [akLeft, akBottom]

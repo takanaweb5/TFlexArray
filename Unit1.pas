@@ -49,6 +49,9 @@ begin
   Log('  --- for-in enumeration ---');
   for var D in A do
     Log(Format('    Value: %.1f', [D]));
+
+  Log('  --- ToString ---');
+  Log(A.ToString);
 end;
 
 procedure Test_3D_New();
@@ -79,6 +82,8 @@ begin
   for V in A do
 //    if V <> 0 then
       Log(Format('    Found Value: %.1f', [V]));
+  Log('  --- ToString ---');
+  Log(A.ToString);
 end;
 
 // ② 1次元参照のテスト
@@ -100,6 +105,9 @@ begin
   Log('  --- for-in enumeration ---');
   for var D in A do
     Log(Format('    Value: %s', [D]));
+
+  Log('  --- ToString ---');
+  Log(A.ToString);
 end;
 
 // --- Form のイベントハンドラ ---

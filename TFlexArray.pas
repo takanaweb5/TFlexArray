@@ -26,6 +26,20 @@ type
         property Current: T read GetCurrent;
         function MoveNext: Boolean;
       end;
+      
+      // // 次元指定列挙子。指定された次元に沿って部分配列を列挙する
+      // TDimensionEnumerator<T> = class
+      // private
+      //   FSource: TFlexArray<T>;
+      //   FDimension: Integer;
+      //   FIndex: Integer;
+      //   function GetCurrent: TFlexArray<T>;
+      //   function CreateSlice(FixedIndex: Integer): TFlexArray<T>;
+      // public
+      //   constructor Create(Source: TFlexArray<T>; Dimension: Integer);
+      //   property Current: TFlexArray<T> read GetCurrent;
+      //   function MoveNext: Boolean;
+      // end;
   private
     FData: TArray<T>;      // 実データ保持用
     FHead: Pointer;        // 物理先頭ポインタ
@@ -39,6 +53,9 @@ type
     function ValueToStr(const V: T): string;
     procedure CheckDimension(ExpectedDim: Integer);
     function Len(Dim: Integer): Integer;
+    function ChooseSlice(FixedIndex: Integer): T; overload;
+    function ChooseSlice(Dimension: Integer; FixedIndex: Integer): TFlexArray<T>; overload;
+    function CalcSrcIndex(DestIndex: NativeInt; FixedDim: Integer; FixedIdx: Integer; DestArray: TFlexArray<T>): NativeInt;
   public
     constructor Create(const Range: TArray<Integer>); overload;
     constructor Create(const Ranges: array of TArray<Integer>); overload;
@@ -58,11 +75,11 @@ type
     function Transpose: TFlexArray<T>;
 
     function ChooseRow(RowIndex: Integer): TFlexArray<T>;
-    function ChooseRows(const RowIndices: TArray<Integer>; ALow: Integer = 1): TFlexArray<T>;
     function ChooseCol(ColIndex: Integer): TFlexArray<T>;
-    function ChooseCols(const ColIndices: TArray<Integer>; ALow: Integer = 1): TFlexArray<T>;
 
     function GetEnumerator: TFlexEnumerator<T>;
+    // function Each(): TFlexEnumerator<T>; overload;
+    // function Each(Dimension: Integer): TDimensionEnumerator<T>; overload;
   end;
 
 implementation
@@ -162,47 +179,78 @@ begin
 end;
 
 function TFlexArray<T>.ChooseRow(RowIndex: Integer): TFlexArray<T>;
-var
-  c: Integer;
 begin
-  CheckDimension(2);
-  Result := TFlexArray<T>.Create([[Low(2), High(2)]]);
-  for c := Low(2) to High(2) do Result[c] := Self[RowIndex, c];
-end;
-
-function TFlexArray<T>.ChooseRows(const RowIndices: TArray<Integer>; ALow: Integer): TFlexArray<T>;
-var
-  r, c, NewR: Integer;
-begin
-  CheckDimension(2);
-  Result := TFlexArray<T>.Create([[ALow, ALow + System.High(RowIndices)], [Low(2), High(2)]]);
-  NewR := ALow;
-  for r in RowIndices do begin
-    for c := Low(2) to High(2) do Result[NewR, c] := Self[r, c];
-    Inc(NewR);
-  end;
+  Result := ChooseSlice(1, RowIndex);
 end;
 
 function TFlexArray<T>.ChooseCol(ColIndex: Integer): TFlexArray<T>;
-var
-  r: Integer;
 begin
-  CheckDimension(2);
-  Result := TFlexArray<T>.Create([[Low(1), High(1)]]);
-  for r := Low(1) to High(1) do Result[r] := Self[r, ColIndex];
+  Result := ChooseSlice(2, ColIndex);
 end;
 
-function TFlexArray<T>.ChooseCols(const ColIndices: TArray<Integer>; ALow: Integer): TFlexArray<T>;
-var
-  r, c, NewC: Integer;
+function TFlexArray<T>.ChooseSlice(FixedIndex: Integer): T;
 begin
-  CheckDimension(2);
-  Result := TFlexArray<T>.Create([[Low(1), High(1)], [ALow, ALow + System.High(ColIndices)]]);
-  NewC := ALow;
-  for c in ColIndices do begin
-    for r := Low(1) to High(1) do Result[r, NewC] := Self[r, c];
-    Inc(NewC);
+  if Dimensions = 1 then
+    Result := Self[FixedIndex]
+  else
+    raise Exception.Create('1次元配列専用です。多次元配列ではDimensionを指定してください');
+end;
+
+function TFlexArray<T>.CalcSrcIndex(DestIndex: NativeInt; FixedDim: Integer; FixedIdx: Integer; DestArray: TFlexArray<T>): NativeInt;
+var
+  i, j: Integer;
+  SrcIndices: TArray<Integer>;
+  TempIndex: NativeInt;
+begin
+  SetLength(SrcIndices, Dimensions);
+  
+  // DestIndexをDestArrayの座標に分解
+  TempIndex := DestIndex;
+  j := 0;
+  for i := DestArray.Dimensions downto 1 do
+  begin
+    var DimSize := DestArray.High(i) - DestArray.Low(i) + 1;
+    var DestCoord := DestArray.Low(i) + (TempIndex mod DimSize);
+    TempIndex := TempIndex div DimSize;
+    
+    // Dest座標をSrc座標にマッピング
+    if i < FixedDim then
+      SrcIndices[i - 1] := DestCoord
+    else if i >= FixedDim then
+      SrcIndices[i] := DestCoord;
+    Inc(j);
   end;
+  
+  // 固定次元を設定
+  SrcIndices[FixedDim - 1] := FixedIdx;
+  
+  // Src座標から線形インデックスを計算
+  Result := 0;
+  for i := 0 to system.High(FDims) do
+    Result := Result + (NativeInt(SrcIndices[i]) - FDims[i].Low) * FDims[i].Stride;
+end;
+
+function TFlexArray<T>.ChooseSlice(Dimension: Integer; FixedIndex: Integer): TFlexArray<T>;
+var
+  i, j: Integer;
+  SliceRanges: TArray<TArray<Integer>>;
+begin
+  // --- 2. 新しい器（n-1次元）の設計図を書く ---
+  SetLength(SliceRanges, Dimensions - 1);
+  j := 0;
+  for i := 1 to Dimensions do
+  begin
+    if i <> Dimension then
+    begin
+      SliceRanges[j] := [Low(i), High(i)];
+      Inc(j);
+    end;
+  end;
+  Result := TFlexArray<T>.Create(SliceRanges);
+
+  for i := 0 to Result.FTotalSize - 1 do
+    Result.FData[i] := Self.FData[CalcSrcIndex(i, Dimension, FixedIndex, Result)];
+
 end;
 
 function TFlexArray<T>.GetOffset(const Indices: array of Integer): NativeInt;
@@ -259,7 +307,7 @@ begin
 
     // 数値型などはそのままの文字列表現
     else
-      Result := Val.ToString;
+      Result := 'この型は表示できません';
   end;
 end;
 
@@ -292,7 +340,8 @@ begin
         Result := '(' + sLineBreak + '  ' + String.Join(sLineBreak + ', ', Rows) + sLineBreak + ')';
       end;
     else
-    raise Exception.Create('ToString は3次元以上の配列には対応していません。');
+      // --- 3次元以上の場合 ---
+      Result := Format('%d次元配列です', [System.Length(FDims)]);
   end;
 end;
 
@@ -339,6 +388,28 @@ begin
   Result := TFlexEnumerator<T>.Create(FHead, FTotalSize);
 end;
 
+// function TFlexArray<T>.Each(): TFlexEnumerator<T>;
+// begin
+//   // 1次元用：要素を列挙
+//   if (Dimensions = 1) or (Dimensions = 0) then
+//     Result := TFlexEnumerator<T>.Create(FHead, FTotalSize)
+//   else
+//     raise Exception.Create('多次元配列です。Each(次元) を使用してください。');
+// end;
+
+// function TFlexArray<T>.Each(Dimension: Integer): TDimensionEnumerator<T>;
+// begin
+//   // 多次元用：部分配列を列挙
+//   if (Dimension < 1) or (Dimension > Dimensions) then
+//     raise Exception.CreateFmt('次元 %d は範囲外です（1～%d）', [Dimension, Dimensions]);
+  
+//   // 1次元配列でEach(1)の場合は要素を列挙
+//   if (Dimensions = 1) and (Dimension = 1) then
+//     raise Exception.Create('1次元配列では Each() を使用してください。');
+    
+//   Result := TDimensionEnumerator<T>.Create(Self, Dimension);
+// end;
+
 { TFlexArray<T>.TFlexEnumerator }
 
 constructor TFlexArray<T>.TFlexEnumerator<T>.Create(AHead: Pointer; ASize: NativeInt);
@@ -359,5 +430,30 @@ begin
   Inc(FIndex);
   Result := FIndex < FTotalSize;
 end;
+
+{ TFlexArray<T>.TDimensionEnumerator }
+
+// constructor TFlexArray<T>.TDimensionEnumerator<T>.Create(Source: TFlexArray<T>; Dimension: Integer);
+// begin
+//   FSource := Source;
+//   FDimension := Dimension;
+//   FIndex := Source.Low(Dimension) - 1; // 開始位置の前から
+// end;
+
+// function TFlexArray<T>.TDimensionEnumerator<T>.MoveNext: Boolean;
+// begin
+//   Inc(FIndex);
+//   Result := FIndex <= FSource.High(FDimension);
+// end;
+
+// function TFlexArray<T>.TDimensionEnumerator<T>.GetCurrent: TFlexArray<T>;
+// begin
+//   Result := CreateSlice(FIndex);
+// end;
+
+// function TFlexArray<T>.TDimensionEnumerator<T>.CreateSlice(FixedIndex: Integer): TFlexArray<T>;
+// begin
+//   Result := FSource.ChooseSlice(FDimension, FixedIndex);
+// end;
 
 end.
