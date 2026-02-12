@@ -6,7 +6,7 @@ uses
   System.SysUtils, System.Generics.Collections, System.Math;
 
 type
-  TFlexAny<T> = record
+  TFlexArray<T> = record
   private
     type
       TDimension = record
@@ -54,7 +54,7 @@ implementation
 { TFlexAny<T> }
 
 { --- 共通ロジック：次元情報の構築 --- }
-function TFlexAny<T>.InternalSetup(const Ranges: array of TArray<Integer>): NativeInt;
+function TFlexArray<T>.InternalSetup(const Ranges: array of TArray<Integer>): NativeInt;
 var
   i: Integer;
   CurrentStride: NativeInt;
@@ -90,13 +90,13 @@ end;
 { --- 公開コンストラクタ --- }
 
 // ① 新規生成（１次元限定）  例：TFlexAny<Double>.Create([1, 10]);
-constructor TFlexAny<T>.Create(const Range: TArray<Integer>);
+constructor TFlexArray<T>.Create(const Range: TArray<Integer>);
 begin
   Create([Range]);
 end;
 
 // ① 新規生成（多次元）  例：TFlexAny<Double>.Create([[1, 10], [1, 12]]);
-constructor TFlexAny<T>.Create(const Ranges: array of TArray<Integer>);
+constructor TFlexArray<T>.Create(const Ranges: array of TArray<Integer>);
 begin
   FTotalSize := InternalSetup(Ranges);
 
@@ -105,14 +105,14 @@ begin
 end;
 
 // ② 配列の偽装/コピ（1次元限定）　例：TFlexAny<Double>.Create([1, 10], src, True);
-constructor TFlexAny<T>.Create(const Range: TArray<Integer>;
+constructor TFlexArray<T>.Create(const Range: TArray<Integer>;
                          const Src: TArray<T>; ACopy: Boolean = False);
 begin
   Create([Range], Src, Acopy);
 end;
 
 // ② 既存1次元配列の偽装/コピ（多次元へ）  例：TFlexAny<Double>.Create([[1, 10], [1, 12]], src, True);
-constructor TFlexAny<T>.Create(const Ranges: array of TArray<Integer>;
+constructor TFlexArray<T>.Create(const Ranges: array of TArray<Integer>;
                          const Src: TArray<T>; ACopy: Boolean = False);
 begin
   FTotalSize := InternalSetup(Ranges);
@@ -132,7 +132,7 @@ begin
   end;
 end;
 
-function TFlexAny<T>.GetOffset(const Indices: array of Integer): NativeInt;
+function TFlexArray<T>.GetOffset(const Indices: array of Integer): NativeInt;
 var
   i: Integer;
 begin
@@ -148,7 +148,7 @@ begin
       Exit(-1);
   end;
 end;
-function TFlexAny<T>.GetValue(const Indices: array of Integer): T;
+function TFlexArray<T>.GetValue(const Indices: array of Integer): T;
 var
   Offset: NativeInt;
 begin
@@ -158,7 +158,7 @@ begin
   Result := TArray<T>(FHead)[Offset];
 end;
 
-procedure TFlexAny<T>.SetValue(const Indices: array of Integer; const Value: T);
+procedure TFlexArray<T>.SetValue(const Indices: array of Integer; const Value: T);
 var
   Offset: NativeInt;
 begin
@@ -168,31 +168,31 @@ begin
   TArray<T>(FHead)[Offset] := Value;
 end;
 
-function TFlexAny<T>.LBound(Dim: Integer): Integer; begin Result := FDims[Dim - 1].Low; end;
-function TFlexAny<T>.UBound(Dim: Integer): Integer; begin Result := FDims[Dim - 1].High; end;
-function TFlexAny<T>.Dimensions: Integer; begin Result := Length(FDims); end;
+function TFlexArray<T>.LBound(Dim: Integer): Integer; begin Result := FDims[Dim - 1].Low; end;
+function TFlexArray<T>.UBound(Dim: Integer): Integer; begin Result := FDims[Dim - 1].High; end;
+function TFlexArray<T>.Dimensions: Integer; begin Result := Length(FDims); end;
 
-function TFlexAny<T>.GetEnumerator: TFlexEnumerator<T>;
+function TFlexArray<T>.GetEnumerator: TFlexEnumerator<T>;
 begin
   Result := TFlexEnumerator<T>.Create(FHead, FTotalSize);
 end;
 
 { TFlexAny<T>.TFlexEnumerator }
 
-constructor TFlexAny<T>.TFlexEnumerator<T>.Create(AHead: Pointer; ASize: NativeInt);
+constructor TFlexArray<T>.TFlexEnumerator<T>.Create(AHead: Pointer; ASize: NativeInt);
 begin
   FHead := AHead;
   FTotalSize := ASize;
   FIndex := -1;
 end;
 
-function TFlexAny<T>.TFlexEnumerator<T>.GetCurrent: T;
+function TFlexArray<T>.TFlexEnumerator<T>.GetCurrent: T;
 begin
   // ポインタから直接アクセス（TArray偽装）
   Result := TArray<T>(FHead)[FIndex];
 end;
 
-function TFlexAny<T>.TFlexEnumerator<T>.MoveNext: Boolean;
+function TFlexArray<T>.TFlexEnumerator<T>.MoveNext: Boolean;
 begin
   Inc(FIndex);
   Result := FIndex < FTotalSize;

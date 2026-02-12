@@ -38,10 +38,10 @@ end;
 // ① 新規生成のテスト
 procedure Test_New();
 var
-  A: TFlexAny<Double>;
+  A: TFlexArray<Double>;
 begin
   Log('[Test: New]');
-  A := TFlexAny<Double>.Create([[1990, 1991], [1, 2]]);
+  A := TFlexArray<Double>.Create([[1990, 1991], [1, 2]]);
   A[1990, 1] := 10.5;
   A[1991, 2] := 99.9;
   Log(Format('  A[1990, 1] = %.1f', [A[1990, 1]]));
@@ -53,14 +53,14 @@ end;
 
 procedure Test_3D_New();
 var
-  A: TFlexAny<Double>;
+  A: TFlexArray<Double>;
   V: Double;
 begin
   Log('[Test: 3D New (1990-1991, 1-2, 10-11)]');
 
   // 3次元配列の生成： [年, 月, 項目ID]
   // 形状: [[1990, 1991], [1, 2], [10, 11]]
-  A := TFlexAny<Double>.Create([[1990, 1991], [1, 3], [10, 11]]);
+  A := TFlexArray<Double>.Create([[1990, 1991], [1, 3], [10, 11]]);
 
   // データの代入（離れた場所を突く）
   A[1990, 1, 10] := 10.5;
@@ -85,13 +85,13 @@ end;
 procedure Test_1D_Ref();
 var
   Src: TArray<string>;
-  A: TFlexAny<string>;
+  A: TFlexArray<string>;
 begin
   Src := 'a,b,c,d,e'.Split([',']);
 
   Log('[Test: 1D Reference]');
 //  SetLength(Src, 5);
-  A := TFlexAny<string>.Create([1, length(Src)], Src);
+  A := TFlexArray<string>.Create([1, length(Src)], Src);
   Src[0] := '100';
   Log(Format('  Src[0] changed to 100 -> A[1] = %s', [A[1]]));
   A[5] := '500';
@@ -107,7 +107,7 @@ end;
 procedure TForm1.Button1Click(Sender: TObject);
 begin
   Memo1.Clear;
-  Memo1.Lines.Add('--- TFlexAny 最終試運転 ---');
+  Memo1.Lines.Add('--- TFlexArray 最終試運転 ---');
 
   Test_New;        // 新規作成
   Test_1D_Ref;    // 1次元参照
