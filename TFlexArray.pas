@@ -12,6 +12,7 @@ type
     type
       TDimension = record
         Low, High, Stride: NativeInt;
+        function Len: NativeInt; inline;
       end;
     type
       // 内部専用の列挙子。これなら制約エラーも出ず、ポインタを直接スキャンできる。
@@ -46,6 +47,7 @@ type
     FDims: TArray<TDimension>;
     FTotalSize: NativeInt;
 
+    function GetCoords(LinearIndex: NativeInt): TArray<Integer>;
     function GetOffset(const Indices: array of Integer): NativeInt;
     function GetValue(const Indices: array of Integer): T;
     procedure SetValue(const Indices: array of Integer; const Value: T);
@@ -55,7 +57,6 @@ type
     function Len(Dim: Integer): Integer;
     function ChooseSlice(FixedIndex: Integer): T; overload;
     function ChooseSlice(Dimension: Integer; FixedIndex: Integer): TFlexArray<T>; overload;
-    function CalcSrcIndex(DestIndex: NativeInt; FixedDim: Integer; FixedIdx: Integer; DestArray: TFlexArray<T>): NativeInt;
   public
     constructor Create(const Range: TArray<Integer>); overload;
     constructor Create(const Ranges: array of TArray<Integer>); overload;
@@ -85,6 +86,13 @@ type
 implementation
 
 { TFlexArray<T> }
+
+{ TFlexArray<T>.TDimension }
+
+function TFlexArray<T>.TDimension.Len: NativeInt;
+begin
+  Result := High - Low + 1;
+end;
 
 { --- 共通ロジック：次元情報の構築 --- }
 function TFlexArray<T>.InternalSetup(const Ranges: array of TArray<Integer>): NativeInt;
@@ -196,49 +204,23 @@ begin
     raise Exception.Create('1次元配列専用です。多次元配列ではDimensionを指定してください');
 end;
 
-function TFlexArray<T>.CalcSrcIndex(DestIndex: NativeInt; FixedDim: Integer; FixedIdx: Integer; DestArray: TFlexArray<T>): NativeInt;
-var
-  i, j: Integer;
-  SrcIndices: TArray<Integer>;
-  TempIndex: NativeInt;
-begin
-  SetLength(SrcIndices, Dimensions);
-  
-  // DestIndexをDestArrayの座標に分解
-  TempIndex := DestIndex;
-  j := 0;
-  for i := DestArray.Dimensions downto 1 do
-  begin
-    var DimSize := DestArray.High(i) - DestArray.Low(i) + 1;
-    var DestCoord := DestArray.Low(i) + (TempIndex mod DimSize);
-    TempIndex := TempIndex div DimSize;
-    
-    // Dest座標をSrc座標にマッピング
-    if i < FixedDim then
-      SrcIndices[i - 1] := DestCoord
-    else if i >= FixedDim then
-      SrcIndices[i] := DestCoord;
-    Inc(j);
-  end;
-  
-  // 固定次元を設定
-  SrcIndices[FixedDim - 1] := FixedIdx;
-  
-  // Src座標から線形インデックスを計算
-  Result := 0;
-  for i := 0 to system.High(FDims) do
-    Result := Result + (NativeInt(SrcIndices[i]) - FDims[i].Low) * FDims[i].Stride;
-end;
-
 function TFlexArray<T>.ChooseSlice(Dimension: Integer; FixedIndex: Integer): TFlexArray<T>;
 var
   i, j: Integer;
-  SliceRanges: TArray<TArray<Integer>>;
+  SliceRanges: array of TArray<Integer>;
+  
+  // 座標変換の無名関数
+  CalcSrcCoords: TFunc<NativeInt, TFlexArray<T>, TFlexArray<T>, TArray<Integer>>;
+  
 begin
-  // --- 2. 新しい器（n-1次元）の設計図を書く ---
-  SetLength(SliceRanges, Dimensions - 1);
+  // SliceRangesの例:
+  // 3次元配列 [1..3, 1..4, 1..5] から Dimension=2 のスライスを取る場合
+  // → SliceRanges = [[1,3], [1,5]] となり、2次元配列が生成される
+  SetLength(SliceRanges, Self.Dimensions - 1);
   j := 0;
-  for i := 1 to Dimensions do
+
+  // 元の次元数分ループ
+  for i := 1 to Self.Dimensions do
   begin
     if i <> Dimension then
     begin
@@ -247,10 +229,55 @@ begin
     end;
   end;
   Result := TFlexArray<T>.Create(SliceRanges);
+  
+  // 無名関数の定義（ジェネリックスがあるとプライベート関数では宣言出来ない）
+  CalcSrcCoords := function(DestIndex: NativeInt; DestArray, SrcArray: TFlexArray<T>): TArray<Integer>
+  var
+    // 具体例: 3次元配列[1..3,1..4,1..5]からDimension=2, FixedIndex=2のスライスを取る場合
+    // DestIndex=0 → DestCoords=[1,1] → SrcCoords=[1,2,1]
+    // DestIndex=1 → DestCoords=[2,1] → SrcCoords=[2,2,1]
+    SrcCoords: TArray<Integer>;
+    DestCoords: TArray<Integer>;
+    i, k: Integer;
+  begin
+    DestCoords := DestArray.GetCoords(DestIndex);
+    SetLength(SrcCoords, SrcArray.Dimensions);
+    
+    k := 0; // DestCoords用のインデックス(元の次元数より１つ少ない)
+    
+    // 元の次元数分ループ
+    for i := 0 to System.High(SrcArray.FDims) do
+    begin
+      if (i + 1) = Dimension then
+        SrcCoords[i] := FixedIndex // 指定された次元は固定値
+      else
+      begin
+        SrcCoords[i] := DestCoords[k];
+        Inc(k);
+      end;
+    end;
+    Result := SrcCoords;
+  end;
 
   for i := 0 to Result.FTotalSize - 1 do
-    Result.FData[i] := Self.FData[CalcSrcIndex(i, Dimension, FixedIndex, Result)];
+    if (Self.FHead <> nil) then
+      Result.FData[i] := TArray<T>(Self.FHead)[GetOffset(CalcSrcCoords(i, Result, Self))];
+end;
 
+function TFlexArray<T>.GetCoords(LinearIndex: NativeInt): TArray<Integer>;
+var
+  i: Integer;
+  TempIndex: NativeInt;
+begin
+  SetLength(Result, Length(FDims));
+  TempIndex := LinearIndex;
+
+  // 末尾の次元から順に割っていく（GetOffsetの逆工程）
+  for i := System.High(FDims) downto System.Low(FDims) do
+  begin
+    Result[i] := (TempIndex mod FDims[i].Len) + FDims[i].Low;
+    TempIndex := TempIndex div FDims[i].Len;
+  end;
 end;
 
 function TFlexArray<T>.GetOffset(const Indices: array of Integer): NativeInt;
