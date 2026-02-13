@@ -10,7 +10,9 @@ type
   TForm1 = class(TForm)
     Memo1: TMemo;
     Button1: TButton;
+    Button2: TButton;
     procedure Button1Click(Sender: TObject);
+    procedure Button2Click(Sender: TObject);
   private
     { Private 宣言 }
   public
@@ -121,6 +123,70 @@ begin
   Test_1D_Ref;    // 1次元参照
   Test_3D_New;
   Memo1.Lines.Add('--- テスト完了 ---');
+end;
+
+procedure TestUltimateChaosSlice;
+var
+  Data4D, Data3D, Data2D, Data1D: TFlexArray<Integer>;
+  i, j, k, l, expectedValue: Integer;
+  vec: TArray<Integer>;
+begin
+  log('--- カオス次元（Low=0,1混在）スライステスト開始 ---');
+
+  SetLength(vec, 24);
+  for i := 0 to 23 do vec[i] := i; // これを忘れると全部 0 になっちゃいます！
+  // 1. 低下インデックスのバラエティを最大化
+  Data4D := TFlexArray<Integer>.Create([
+    [1, 2],       // Dim1: Low=1 (1始まり)
+    [-1, -1],     // Dim2: Low=-1 (負数)
+    [2021, 2023], // Dim3: Low=2021 (巨大な正数)
+    [0, 3]        // Dim4: Low=0 (0始まり)
+  ], vec);
+
+
+  expectedValue := 0;
+
+  // 3. 4重ループによる「次元の皮剥ぎ」
+  // Data4D[i] -> Data3D[j] -> Data2D[k] -> Data1D[l]
+
+  for i := Data4D.Low(1) to Data4D.High(1) do
+  begin
+    Data3D := Data4D.ChooseSlice(1, i);
+
+    for j := Data3D.Low(1) to Data3D.High(1) do
+    begin
+      Data2D := Data3D.ChooseSlice(1, j);
+
+      for k := Data2D.Low(1) to Data2D.High(1) do
+      begin
+        Data1D := Data2D.ChooseSlice(1, k);
+
+        for l := Data1D.Low(1) to Data1D.High(1) do
+        begin
+          // 4. 検証
+          // GetValue([l]) が内部で GetOffset を呼び、
+          // 複雑な歩幅(Stride)とオフセット計算を経て、元のFDataの正解に辿り着く
+          Log(Format('%2d ', [Data1D[l]]));
+
+          if Data1D[l] <> expectedValue then
+            Log(Format(
+              'パズル崩壊！ エラー地点: Indices[%d, %d, %d, %d] 期待値:%d 実際:%d',
+              [i, j, k, l, expectedValue, Data1D[l]]
+            ));
+
+          Inc(expectedValue);
+        end;
+        Log('終了');
+      end;
+    end;
+  end;
+
+  Log('--- テスト成功：カオスなインデックス設定でも連番を完全走破！ ---');
+end;
+
+procedure TForm1.Button2Click(Sender: TObject);
+begin
+TestUltimateChaosSlice
 end;
 
 end.

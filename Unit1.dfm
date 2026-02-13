@@ -25,6 +25,8 @@ object Form1: TForm1
       'Memo1')
     ScrollBars = ssVertical
     TabOrder = 0
+    ExplicitWidth = 758
+    ExplicitHeight = 490
   end
   object Button1: TButton
     Left = 8
@@ -35,6 +37,15 @@ object Form1: TForm1
     Caption = 'Button1'
     TabOrder = 1
     OnClick = Button1Click
-    ExplicitTop = 400
+    ExplicitTop = 496
+  end
+  object Button2: TButton
+    Left = 128
+    Top = 504
+    Width = 75
+    Height = 25
+    Caption = 'Button2'
+    TabOrder = 2
+    OnClick = Button2Click
   end
 end
