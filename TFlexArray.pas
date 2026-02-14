@@ -55,14 +55,49 @@ type
     function InternalSetup(const Ranges: array of TArray<Integer>): NativeInt;
     function ValueToStr(const V: T): string;
     procedure CheckDimension(ExpectedDim: Integer);
-    function Len(Dim: Integer): Integer;
+//    function Len(Dim: Integer): Integer;
   public
-    constructor Create(const Range: TArray<Integer>); overload;
-    constructor Create(const Ranges: array of TArray<Integer>); overload;
-    constructor Create(const Range: TArray<Integer>;
-                           const Src: TArray<T>; ACopy: Boolean = False); overload;
-    constructor Create(const Ranges: array of TArray<Integer>;
-                           const Src: TArray<T>; ACopy: Boolean = False); overload;
+
+////////////////////////////////////////////////////////////////
+    { --- 1. 新規生成 (Create: メモリ確保あり) --- }
+    
+    // 汎用・多次元
+    constructor Create(const AShapes: array of Integer; ABaseIndex: Integer); overload;
+    // 1次元（ショートカット）
+    constructor Create(ASize: Integer; ABaseIndex: Integer); overload;
+    // 行列特化（明示的 Rows, Cols）
+    constructor CreateMatrix(ARows, ACols: Integer; ABaseIndex: Integer); overload;
+
+    { --- 2. 範囲指定生成 (CreateFromRange: メモリ確保あり) --- }
+    
+    // 1次元：CreateFromRange([-5, 5])
+    constructor CreateFromRange(const ARange: TArray<Integer>); overload;
+    // 多次元：CreateFromRange([[1, 10], [1, 10]])
+    constructor CreateFromRange(const ARanges: array of TArray<Integer>); overload;
+
+    { --- 3. 既存データからの生成 (Copy / View) --- }
+
+    // 既存の動的配列を「コピー」して実体を作成
+    constructor CreateFromArray(const ASrc: TArray<T>; ABaseIndex: Integer); overload;
+    // 既存の FlexArray を「コピー」して実体を作成
+    constructor CreateFromFlexArray(const ASrc: TFlexArray<T>); overload;
+    // 既存の動的配列を「参照」する (Julia-style View)
+    constructor ViewFromArray(var ASrc: TArray<T>; ABaseIndex: Integer); overload;
+
+    { --- 4. 構造の再定義 (Reshape) --- }
+
+    // 汎用・多次元変形
+    procedure Reshape(const AShapes: array of Integer; ABaseIndex: Integer);
+    // 行列特化変形（明示的 Rows, Cols）
+    procedure ReshapeMatrix(ARows, ACols: Integer; ABaseIndex: Integer);
+    // 範囲指定による再定義
+    procedure ReshapeRange(const ARange: array of Integer); overload; // 1D
+    procedure ReshapeRange(const ARanges: array of TArray<Integer>); overload; // nD
+////////////////////////////////////////////////////////////////
+
+
+
+
     function Low: Integer; overload;
     function High: Integer; overload;
     function Low(Dim: Integer): Integer; overload;
@@ -134,47 +169,93 @@ end;
 
 { --- 公開コンストラクタ --- }
 
-// ① 新規生成（１次元限定）  例：TFlexArray<Double>.Create([1, 10]);
-constructor TFlexArray<T>.Create(const Range: TArray<Integer>);
+// 汎用・多次元コンストラクタ
+constructor TFlexArray<T>.Create(const AShapes: array of Integer; ABaseIndex: Integer);
+var
+  i: Integer;
+  Ranges: array of TArray<Integer>;
 begin
-  Create([Range]);
+  SetLength(Ranges, System.Length(AShapes));
+  for i := 0 to System.High(AShapes) do
+    Ranges[i] := [ABaseIndex, ABaseIndex + AShapes[i] - 1];
+  
+  FTotalSize := InternalSetup(Ranges);
+  SetLength(FData, FTotalSize);
+  FHead := @FData[0];
 end;
 
-// ① 新規生成（多次元）  例：TFlexArray<Double>.Create([[1, 10], [1, 12]]);
-constructor TFlexArray<T>.Create(const Ranges: array of TArray<Integer>);
+// 1次元ショートカットコンストラクタ
+constructor TFlexArray<T>.Create(ASize: Integer; ABaseIndex: Integer);
 begin
-  FTotalSize := InternalSetup(Ranges);
+  Create([ASize], ABaseIndex);
+end;
+
+// CreateFromRange 1次元
+constructor TFlexArray<T>.CreateFromRange(const ARange: TArray<Integer>);
+begin
+  CreateFromRange([ARange]);
+end;
+
+// CreateFromRange 多次元
+{
+  CreateFromRange (多次元版)
+  記述例: TFlexArray<Double>.CreateFromRange([[1, 10], [-5, 5]]);
+}
+constructor TFlexArray<T>.CreateFromRange(const ARanges: array of TArray<Integer>);
+begin
+  FTotalSize := InternalSetup(ARanges);
 
   SetLength(FData, FTotalSize);
   FHead := @FData[0];
 end;
 
-// ② 配列の偽装/コピ（1次元限定）　例：TFlexArray<Double>.Create([1, 10], src, True);
-constructor TFlexArray<T>.Create(const Range: TArray<Integer>;
-                         const Src: TArray<T>; ACopy: Boolean = False);
+// 既存データから生成
+{ --- CreateFromArray: 動的配列からのコピー生成 --- }
+constructor TFlexArray<T>.CreateFromArray(const ASrc: TArray<T>; ABaseIndex: Integer);
+var
+  Ranges: array of TArray<Integer>;
 begin
-  Create([Range], Src, Acopy);
+  // ViewFromArrayと同じロジックを実装
+  SetLength(Ranges, 1);
+  Ranges[0] := [ABaseIndex, ABaseIndex + System.Length(ASrc) - 1];
+  FTotalSize := InternalSetup(Ranges);
+  
+  // データをコピーして実体化
+  SetLength(FData, FTotalSize);
+  FHead := @FData[0];
+  TArray.Copy<T>(ASrc, FData, FTotalSize); // 管理型も安全にコピー
 end;
 
-// ② 既存1次元配列の偽装/コピ（多次元へ）  例：TFlexArray<Double>.Create([[1, 10], [1, 12]], src, True);
-constructor TFlexArray<T>.Create(const Ranges: array of TArray<Integer>;
-                         const Src: TArray<T>; ACopy: Boolean = False);
+{ --- CreateFromFlexArray: FlexArray 同士の完全コピー --- }
+constructor TFlexArray<T>.CreateFromFlexArray(const ASrc: TFlexArray<T>);
 begin
-  FTotalSize := InternalSetup(Ranges);
-  Assert(FTotalSize <= System.Length(Src), '指定サイズが元の配列を超えています');
+  // 構造情報をコピー
+  FTotalSize := ASrc.FTotalSize;
+  SetLength(FDims, System.Length(ASrc.FDims));
+  TArray.Copy<TDimension>(ASrc.FDims, FDims, System.Length(ASrc.FDims));
+  
+  // データをコピー
+  SetLength(FData, FTotalSize);
+  TArray.Copy<T>(TArray<T>(ASrc.FHead), FData, FTotalSize);
+  FHead := @FData[0];
+end;
 
-  if ACopy then
-  begin
-    SetLength(FData, FTotalSize);
-    FHead := @FData[0];
-    if (FTotalSize > 0) and (Pointer(Src) <> nil) then
-      TArray.Copy<T>(Src, FData, FTotalSize); // 管理型も安全にコピー
-  end
-  else
-  begin
-    // 参照（偽装）モード
-    FHead := Pointer(Src);
-  end;
+{ --- ViewFromArray: 参照生成 (Julia-style) --- }
+constructor TFlexArray<T>.ViewFromArray(var ASrc: TArray<T>; ABaseIndex: Integer);
+var
+  Ranges: array of TArray<Integer>;
+begin
+  SetLength(Ranges, 1);
+  Ranges[0] := [ABaseIndex, ABaseIndex + System.Length(ASrc) - 1];
+  FTotalSize := InternalSetup(Ranges);
+  FHead := Pointer(ASrc);
+end;
+// --- 静的関数の実装 ---
+
+// 行列特化コンストラクタ
+constructor TFlexArray<T>.CreateMatrix(ARows, ACols: Integer; ABaseIndex: Integer);
+begin
+  TFlexArray<T>.Create([ARows, ACols], ABaseIndex);
 end;
 
 procedure TFlexArray<T>.CheckDimension(ExpectedDim: Integer);
@@ -450,10 +531,10 @@ begin
   Result := Transpose([2, 1]);
 end;
 
-function TFlexArray<T>.Len(Dim: Integer): Integer;
-begin
-  Result := FDims[Dim - 1].High - FDims[Dim - 1].Low + 1;
-end;
+//function TFlexArray<T>.Len(Dim: Integer): Integer;
+//begin
+//  Result := FDims[Dim - 1].High - FDims[Dim - 1].Low + 1;
+//end;
 
 function TFlexArray<T>.Low: Integer;
 begin
@@ -544,5 +625,102 @@ end;
 // begin
 //   Result := FSource.ChooseSlice(FDimension, FixedIndex);
 // end;
+
+
+//////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+procedure TFlexArray<T>.IncCoords(var CurrentCoords: TArray<Integer>; const Ranges: array of TArray<Integer>);
+var
+  d: Integer;
+begin
+  // 一番右側の次元（最小単位）から順にチェック
+  for d := High(CurrentCoords) downto 0 do
+  begin
+    Inc(CurrentCoords[d]); // 1つ進める
+
+    // 上限(High)を超えていないかチェック
+    // Ranges[d] は [Low, High] の 2要素配列を想定
+    if CurrentCoords[d] <= Ranges[d][1] then
+    begin
+      // 繰り上がりが発生しなかったので、ここで終了
+      Exit;
+    end
+    else
+    begin
+      // 上限を超えたので、現在の次元を最小値(Low)にリセットし、
+      // ループを継続して一つ左の次元（上位桁）を Inc する
+      CurrentCoords[d] := Ranges[d][0];
+    end;
+  end;
+end;
+
+function TFlexArray<T>.Concat(const Another: TFlexArray<T>; Dim: Integer): TFlexArray<T>;
+var
+  TargetDimIdx: Integer;
+  NewRanges: TArray<TArray<Integer>>;
+  DestCoords: TArray<Integer>;
+  SelfSizeAlongDim: Integer;
+  i, d: Integer;
+begin
+  // 1. 次元の正規化 (1-based to 0-based)
+  TargetDimIdx := Dim - 1;
+
+  // 2. 新しい形状（Ranges）の計算
+  SetLength(NewRanges, Self.FDimensions);
+  for d := 0 to Self.FDimensions - 1 do
+  begin
+    SetLength(NewRanges[d], 2);
+    NewRanges[d][0] := Self.FRanges[d][0]; // LowBoundはSelfに合わせる
+    if d = TargetDimIdx then
+      // 結合する次元だけ、自分と相手のサイズを足し合わせる
+      NewRanges[d][1] := Self.FRanges[d][1] + (Another.FRanges[d][1] - Another.FRanges[d][0] + 1)
+    else
+      NewRanges[d][1] := Self.FRanges[d][1];
+  end;
+
+  // 3. 結果用配列の生成
+  Result := TFlexArray<T>.Create(NewRanges);
+  SelfSizeAlongDim := Self.FRanges[TargetDimIdx][1] - Self.FRanges[TargetDimIdx][0] + 1;
+  
+  // 4. Result 用の時計（座標）を初期化
+  DestCoords := Result.GetMinCoords;
+
+  // 5. Self のデータを埋める
+  for i := 0 to Self.FTotalSize - 1 do
+  begin
+    // ストライドにより、変更前後で同じ座標でも Self の正しいメモリ位置が引ける
+    Result.FData[i] := Self.FData[Self.GetOffset(DestCoords)];
+
+    // 座標を1つ進めるイテレーターの一種
+    Result.IncCoords(DestCoords, Result.FRanges);
+  end;
+
+  // 6. Another のデータを埋める
+  for i := Self.FTotalSize to Result.FTotalSize - 1 do
+  begin
+    // Another のローカル座標に合わせる（※ 抽出後に必ず戻すこと）
+    DestCoords[TargetDimIdx] := DestCoords[TargetDimIdx] - SelfSizeAlongDim;
+  
+    Result.FData[i] := Another.FData[Another.GetOffset(DestCoords)];
+
+    // 約束の通り、座標を元に戻す
+    DestCoords[TargetDimIdx] := DestCoords[TargetDimIdx] + SelfSizeAlongDim;
+  
+    // 座標を1つ進めるイテレーターの一種
+    // [1,1,1] → [1,1,2]  繰上がり時 [1,1,3] → [1,2,1]
+    Result.IncCoords(DestCoords, Result.FRanges);
+  end;
+end;
+
+function TFlexArray<T>.VStack(const Another: TFlexArray<T>): TFlexArray<T>;
+begin
+  Result := Self.Concat(Another, 1);
+end;
+
+function TFlexArray<T>.HStack(const Another: TFlexArray<T>): TFlexArray<T>;
+begin
+  Result := Self.Concat(Another, 2);
+end;
 
 end.
