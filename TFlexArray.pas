@@ -55,85 +55,23 @@ type
     function InternalSetup(const Ranges: array of TArray<Integer>): NativeInt;
     function ValueToStr(const V: T): string;
     procedure CheckDimension(ExpectedDim: Integer);
-    function Concat(const Another: TFlexArray<T>; TargetDim: Integer): TFlexArray<T>;
-    function HStack(const Another: TFlexArray<T>): TFlexArray<T>;
     procedure IncCoords(var CurrentCoords: TArray<Integer>;
       const Ranges: array of TArray<Integer>);
-    function VStack(const Another: TFlexArray<T>): TFlexArray<T>;
     function GetMinCoords: TArray<Integer>;
-    function AppendArray(const Another: TFlexArray<T>): TFlexArray<T>; overload;
-    function AppendArray(const Another: TArray<T>): TFlexArray<T>; overload;
     procedure AddValue(const Value: T);
 {$IFDEF FLEXARRAY_ENABLE_LEN}
     function Len(Dim: Integer): NativeInt;
 {$ENDIF}
   public
 
-////////////////////////////////////////////////////////////////
-    { --- 1. 新規生成 (Create: メモリ確保あり) --- }
-    
-    // 汎用・多次元
     constructor Create(const AShapes: array of Integer; ABaseIndex: Integer); overload;
-    // 1次元（ショートカット）
     constructor Create(ASize: Integer; ABaseIndex: Integer); overload;
-    // 行列特化（明示的 Rows, Cols）
     constructor CreateMatrix(ARows, ACols: Integer; ABaseIndex: Integer); overload;
-
-    { --- 2. 範囲指定生成 (CreateFromRange: メモリ確保あり) --- }
-    
-    // 1次元：CreateFromRange([-5, 5])
     constructor CreateFromRange(const ARange: TArray<Integer>); overload;
-    // 多次元：CreateFromRange([[1, 10], [1, 10]])
     constructor CreateFromRange(const ARanges: array of TArray<Integer>); overload;
-
-    { --- 3. 既存データからの生成 (Copy / View) --- }
-
-    // 既存の動的配列を「コピー」して実体を作成
     constructor CreateFromArray(const ASrc: TArray<T>; ABaseIndex: Integer); overload;
-    // 既存の FlexArray を「コピー」して実体を作成
     constructor CreateFromFlexArray(const ASrc: TFlexArray<T>); overload;
-    // 既存の動的配列を「参照」する (Julia-style View)
     constructor ViewFromArray(const ASrc: TArray<T>; ABaseIndex: Integer); overload;
-
-    { --- 4. 構造の再定義 (Reshape) --- }
-
-    // 汎用・多次元変形
-    procedure Reshape(const AShapes: array of Integer; ABaseIndex: Integer);
-    // 行列特化変形（明示的 Rows, Cols）
-    procedure ReshapeMatrix(ARows, ACols: Integer; ABaseIndex: Integer);
-    // 範囲指定による再定義
-    procedure ReshapeRange(const ARange: TArray<Integer>); overload; // 1D
-    procedure ReshapeRange(const ARanges: array of TArray<Integer>); overload; // nD
-
-////////////////////////////////////////////////////////////////
-// --- 4. 構造の再定義 (Reshape) ---
-//
-// [概要] 配列の形状を変更し、データを保持したまま次元構造を再定義
-// [機能] 既存データのメモリレイアウトを維持しつつ、新しい次元形状に適応
-// [制約] 変更前後の全要素数が一致する必要あり
-// [用途] データサイエンスでの前処理、行列のベクトル化、テンソル形状変更
-//
-// [実装方針]
-// 1. 要素数チェック：変更前後のFTotalSizeが一致することを確認
-// 2. 次元再構築：InternalSetupで新しいFDimsとStrideを計算
-// 3. データ保持：FDataとFHeadは変更せず、構造情報のみ更新
-// 4. 範囲検証：新しい形状が有効範囲内であることを保証
-//
-// [使用例]
-//   // 2x3行列 → 3x2行列に転置（データ順は維持）
-//   Matrix.Reshape([3, 2], 1);
-//   
-//   // 2x3x4テンソル → 6x4行列に平坦化
-//   Tensor.Reshape([6, 4], 1);
-//
-// [注意事項]
-// - Transposeとは異なり、データの物理的な並び順は変更しない
-// - インデックスアクセスの意味が変わる可能性がある
-// - 要素数が不一致の場合は例外を発生
-////////////////////////////////////////////////////////////////
-
-
-
 
     function Low: Integer; overload;
     function High: Integer; overload;
@@ -143,8 +81,13 @@ type
     property Items[const Indices: array of Integer]: T read GetValue write SetValue; default;
     property TotalSize: NativeInt read FTotalSize;
 
-    function ToString(): string;
+    procedure Reshape(const AShapes: array of Integer; ABaseIndex: Integer);
+    procedure ReshapeMatrix(ARows, ACols: Integer; ABaseIndex: Integer);
+    procedure ReshapeRange(const ARange: TArray<Integer>); overload; // 1D
+    procedure ReshapeRange(const ARanges: array of TArray<Integer>); overload; // nD
+
     function ToVector(): TArray<T>;
+    function ToString(): string;
     function ToRangesString(): string;
     function Transpose(): TFlexArray<T>; overload;
     function Transpose(const NewDimensions: array of Integer): TFlexArray<T>; overload;
@@ -153,6 +96,13 @@ type
     function ChooseSlice(Dimension: Integer; Index: Integer): TFlexArray<T>; overload;
     function ChooseRow(RowIndex: Integer): TFlexArray<T>;
     function ChooseCol(ColIndex: Integer): TFlexArray<T>;
+
+    function Concat(const Another: TFlexArray<T>; TargetDim: Integer): TFlexArray<T>;
+    function HStack(const Another: TFlexArray<T>): TFlexArray<T>;
+    function VStack(const Another: TFlexArray<T>): TFlexArray<T>;
+
+    function AppendArray(const Another: TFlexArray<T>): TFlexArray<T>; overload;
+    function AppendArray(const Another: TArray<T>): TFlexArray<T>; overload;
 
     function GetEnumerator: TFlexEnumerator<T>;
     // function Each(): TFlexEnumerator<T>; overload;
