@@ -58,7 +58,8 @@ type
     procedure IncCoords(var CurrentCoords: TArray<Integer>;
       const Ranges: array of TArray<Integer>);
     function GetMinCoords: TArray<Integer>;
-    procedure AddValue(const Value: T);
+    function GetLinearValue(Index: NativeInt): T; inline;
+    procedure SetLinearValue(Index: NativeInt; const Value: T); inline;
 {$IFDEF FLEXARRAY_ENABLE_LEN}
     function Len(Dim: Integer): NativeInt;
 {$ENDIF}
@@ -79,6 +80,7 @@ type
     function High(Dim: Integer): Integer; overload;
     function Dimensions: Integer;
     property Items[const Indices: array of Integer]: T read GetValue write SetValue; default;
+    property Elements[Index: NativeInt]: T read GetLinearValue write SetLinearValue;
     property TotalSize: NativeInt read FTotalSize;
 
     procedure Reshape(const AShapes: array of Integer; ABaseIndex: Integer);
@@ -344,62 +346,61 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.ChooseSlice(Dimension: Integer; Index: Integer): TFlexArray<T>;
 var
-  i, j: Integer;
+  i, d: Integer;
   NewRanges: array of TArray<Integer>;
-  
-  // 座標変換の無名関数
-  CalcSrcCoords: TFunc<NativeInt, TFlexArray<T>, TFlexArray<T>, TArray<Integer>>;
-  
+  DestCoords: TArray<Integer>;
 begin
-  // NewRangesの例:
+  // 1. NewRangesの計算（指定次元を除外）
   // 3次元配列 [1..3, 1..4, 1..5] から Dimension=2 のスライスを取る場合
   // → NewRanges = [[1,3], [1,5]] となり、2次元配列が生成される
   SetLength(NewRanges, Self.Dimensions - 1);
-  j := 0;
+  d := 0;
 
   // 元の次元数分ループ
   for i := 1 to Self.Dimensions do
   begin
     if i <> Dimension then
     begin
-      NewRanges[j] := [Low(i), High(i)];
-      Inc(j);
+      NewRanges[d] := [Low(i), High(i)];
+      Inc(d);
     end;
-  end;
-  Result := TFlexArray<T>.CreateFromRange(NewRanges);
-  
-  // 無名関数の定義（ジェネリックスがあるとプライベート関数では宣言出来ない）
-  CalcSrcCoords := function(DestIndex: NativeInt; DestArray, SrcArray: TFlexArray<T>): TArray<Integer>
-  var
-    // 具体例: 3次元配列[1..3,1..4,1..5]からDimension=2, FixedIndex=2のスライスを取る場合
-    // DestIndex=0 → DestCoords=[1,1] → SrcCoords=[1,2,1]
-    // DestIndex=1 → DestCoords=[2,1] → SrcCoords=[2,2,1]
-    SrcCoords: TArray<Integer>;
-    DestCoords: TArray<Integer>;
-    i, k: Integer;
-  begin
-    DestCoords := DestArray.GetCoords(DestIndex);
-    SetLength(SrcCoords, SrcArray.Dimensions);
-    
-    k := 0; // DestCoords用のインデックス(元の次元数より１つ少ない)
-    
-    // 元の次元数分ループ
-    for i := 0 to System.High(SrcArray.FDims) do
-    begin
-      if (i + 1) = Dimension then
-        SrcCoords[i] := Index // 指定された次元は固定値
-      else
-      begin
-        SrcCoords[i] := DestCoords[k];
-        Inc(k);
-      end;
-    end;
-    Result := SrcCoords;
   end;
 
+  // 2. 結果用配列の生成
+  Result := TFlexArray<T>.CreateFromRange(NewRanges);
+  
+  // 3. Result 用の座標を初期化
+  DestCoords := Result.GetMinCoords;
+
+  // 4. データを埋める（座標変換付き）
   for i := 0 to Result.FTotalSize - 1 do
+  begin
+    // 転置後配列における現在の線形位置から論理座標(x,y,z...)を出す
+    var SrcCoords: TArray<Integer>;
+    SetLength(SrcCoords, Dimensions);
+    
+    // 元の配列の座標を再構築
+    d := 0; // DestCoords用のインデックス(元の次元数より１つ少ない)
+    
+    // 元の次元数分ループ
+    for var j := 0 to System.High(FDims) do
+    begin
+      if (j + 1) = Dimension then
+        SrcCoords[j] := Index // 指定された次元は固定値
+      else
+      begin
+        SrcCoords[j] := DestCoords[d];
+        Inc(d);
+      end;
+    end;
+    
+    // GetOffsetを通じて正しい物理位置を特定し、コピー
     if (Self.FHead <> nil) then
-      Result.FData[i] := TArray<T>(Self.FHead)[GetOffset(CalcSrcCoords(i, Result, Self))];
+      Result.FData[i] := Self.Elements[Self.GetOffset(SrcCoords)];
+
+    // 座標を1つ進めるイテレーター
+    Result.IncCoords(DestCoords, NewRanges);
+  end;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -459,7 +460,7 @@ begin
   Offset := GetOffset(Indices);
   // 境界外なら初期値を返す
   if Offset = -1 then Exit(Default(T));
-  Result := TArray<T>(FHead)[Offset];
+  Result := Self.Elements[Offset];
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -474,7 +475,27 @@ begin
   Offset := GetOffset(Indices);
   // 境界外なら何もしない
   if Offset = -1 then Exit;
-  TArray<T>(FHead)[Offset] := Value;
+  Self.Elements[Offset] := Value;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 線形インデックスで値を取得
+// [引数] 0-based線形インデックス
+// [戻値] 指定位置の値（範囲外の場合は既定値）
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.GetLinearValue(Index: NativeInt): T;
+begin
+  Result := TArray<T>(FHead)[Index];
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 線形インデックスに値を設定
+// [引数] 0-based線形インデックス, 設定する値
+// [戻値] なし
+//////////////////////////////////////////////////////////////////////////////////////
+procedure TFlexArray<T>.SetLinearValue(Index: NativeInt; const Value: T);
+begin
+  TArray<T>(FHead)[Index] := Value;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -590,19 +611,16 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.Transpose(const NewDimensions: array of Integer): TFlexArray<T>;
 var
-  i: Integer;
+  i, d: Integer;
   NewRanges: array of TArray<Integer>;
-  InternalAxes: TArray<Integer>;
-  CalcSrcCoords: TFunc<NativeInt, TFlexArray<T>, TFlexArray<T>, TArray<Integer>>;
-  // 最適化用：ループ外で座標バッファを確保
   DestCoords: TArray<Integer>;
-  SrcCoords: TArray<Integer>;
+  InternalAxes: TArray<Integer>;
 begin
-  // --- A. バリデーション ---
+  // 1. バリデーション
   if System.Length(NewDimensions) <> Self.Dimensions then
     raise Exception.Create('Transpose: 指定された軸の数が配列の次元数と一致しません。');
 
-  // --- B. 1-based -> 0-based 変換と NewRanges の構築 ---
+  // 2. 1-based -> 0-based 変換と NewRanges の計算
   SetLength(InternalAxes, Dimensions);
   SetLength(NewRanges, Dimensions);
   
@@ -616,38 +634,32 @@ begin
     NewRanges[i] := [Self.Low(NewDimensions[i]), Self.High(NewDimensions[i])];
   end;
 
-  // 新しい実体配列を生成
+  // 3. 結果用配列の生成
   Result := TFlexArray<T>.CreateFromRange(NewRanges);
+  
+  // 4. Result 用の座標を初期化
+  DestCoords := Result.GetMinCoords;
 
-  // --- C. 座標変換ロジックの定義 ---
-  // 最適化：クロージャ内で使い回すためのバッファを事前に確保
-  SetLength(DestCoords, Dimensions);
-  SetLength(SrcCoords, Dimensions);
-
-  CalcSrcCoords := function(DestIndex: NativeInt; DestArray, SrcArray: TFlexArray<T>): TArray<Integer>
-  var
-    k: Integer;
-  begin
-    // 転置後配列における現在の線形位置から論理座標(x,y,z...)を出す
-    DestCoords := DestArray.GetCoords(DestIndex);
-
-    // 元の配列の座標を再構築
-    for k := 0 to System.High(InternalAxes) do
-    begin
-      // 「転置後の第k次元」のインデックスを「元の第InternalAxes[k]次元」へ配置
-      SrcCoords[InternalAxes[k]] := DestCoords[k];
-    end;
-    Result := SrcCoords;
-  end;
-
-  // --- D. 物理コピー実行 ---
+  // 5. データを埋める（座標変換付き）
   for i := 0 to Result.FTotalSize - 1 do
   begin
-    if (Self.FHead <> nil) then
+    // 転置後配列における現在の線形位置から論理座標(x,y,z...)を出す
+    var SrcCoords: TArray<Integer>;
+    SetLength(SrcCoords, Dimensions);
+    
+    // 元の配列の座標を再構築
+    for d := 0 to System.High(InternalAxes) do
     begin
-      // GetOffsetを通じて正しい物理位置を特定し、コピー
-      Result.FData[i] := TArray<T>(Self.FHead)[Self.GetOffset(CalcSrcCoords(i, Result, Self))];
+      // 「転置後の第d次元」のインデックスを「元の第InternalAxes[d]次元」へ配置
+      SrcCoords[InternalAxes[d]] := DestCoords[d];
     end;
+    
+    // GetOffsetを通じて正しい物理位置を特定し、コピー
+    if (Self.FHead <> nil) then
+      Result.FData[i] := Self.Elements[Self.GetOffset(SrcCoords)];
+
+    // 座標を1つ進めるイテレーター
+    Result.IncCoords(DestCoords, NewRanges);
   end;
 end;
 
@@ -906,8 +918,9 @@ begin
   // 5. Self のデータを埋める
   for i := 0 to Self.FTotalSize - 1 do
   begin
-    // ストライドにより、変更前後で同じ座標でも Self の正しいメモリ位置が引ける
-    Result.FData[i] := Self.FData[Self.GetOffset(DestCoords)];
+    // GetOffsetを通じて正しい物理位置を特定し、コピー
+    if (Self.FHead <> nil) then
+      Result.FData[i] := Self.Elements[Self.GetOffset(DestCoords)];
 
     // 座標を1つ進めるイテレーターの一種
     Result.IncCoords(DestCoords, NewRanges);
@@ -919,7 +932,9 @@ begin
     // Another のローカル座標に合わせる（※ 抽出後に必ず戻すこと）
     DestCoords[DimIdx] := DestCoords[DimIdx] - SelfSizeAlongDim;
   
-    Result.FData[i] := Another.FData[Another.GetOffset(DestCoords)];
+    // GetOffsetを通じて正しい物理位置を特定し、コピー
+    if (Another.FHead <> nil) then
+      Result.FData[i] := Another.Elements[Another.GetOffset(DestCoords)];
 
     // 約束の通り、座標を元に戻す
     DestCoords[DimIdx] := DestCoords[DimIdx] + SelfSizeAlongDim;
@@ -1067,34 +1082,6 @@ end;
 function TFlexArray<T>.AppendArray(const Another: TArray<T>): TFlexArray<T>;
 begin
   Result := Self.Concat(TFlexArray<T>.ViewFromArray(Another, 1), 1);
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
-// [概要] 1次元配列の末尾に要素を追加
-// [引数] 追加する要素
-// [戻値] なし
-// [備考] 1次元配列専用です。多次元配列では例外を発生させます。
-//////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.AddValue(const Value: T);
-begin
-  CheckDimension(1);
-  
-  // 新しい配列サイズを計算
-  var NewSize := FTotalSize + 1;
-  var NewLow := FDims[0].Low;
-  var NewHigh := NewLow + NewSize - 1;
-  
-  // 新しい配列を確保してデータをコピー
-  var NewData: TArray<T>;
-  SetLength(NewData, NewSize);
-  TArray.Copy<T>(TArray<T>(FHead), NewData, FTotalSize);
-  NewData[FTotalSize] := Value; // 末尾に追加
-  
-  // 内部情報を更新
-  FTotalSize := NewSize;
-  FData := NewData;
-  FHead := @FData[0];
-  FDims[0].High := NewHigh;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
