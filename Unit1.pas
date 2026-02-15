@@ -43,7 +43,7 @@ var
   A: TFlexArray<Double>;
 begin
   Log('[Test: New]');
-  A := TFlexArray<Double>.Create([[1990, 1991], [1, 2]]);
+  A := TFlexArray<Double>.CreateFromRange([[1990, 1991], [1, 2]]);
   A[1990, 1] := 10.5;
   A[1991, 2] := 99.9;
   Log(Format('  A[1990, 1] = %.1f', [A[1990, 1]]));
@@ -65,7 +65,7 @@ begin
 
   // 3次元配列の生成： [年, 月, 項目ID]
   // 形状: [[1990, 1991], [1, 2], [10, 11]]
-  A := TFlexArray<Double>.Create([[1990, 1991], [1, 3], [10, 11]]);
+  A := TFlexArray<Double>.CreateFromRange([[1990, 1991], [1, 3], [10, 11]]);
 
   // データの代入（離れた場所を突く）
   A[1990, 1, 10] := 10.5;
@@ -98,7 +98,7 @@ begin
 
   Log('[Test: 1D Reference]');
 //  SetLength(Src, 5);
-  A := TFlexArray<string>.Create([1, length(Src)], Src);
+  A := TFlexArray<string>.CreateFromArray(Src, 1);
   Src[0] := '100';
   Log(Format('  Src[0] changed to 100 -> A[1] = %s', [A[1]]));
   A[5] := '500';
@@ -136,12 +136,12 @@ begin
   SetLength(vec, 24);
   for i := 0 to 23 do vec[i] := i; // これを忘れると全部 0 になっちゃいます！
   // 1. 低下インデックスのバラエティを最大化
-  Data4D := TFlexArray<Integer>.Create([
+  Data4D := TFlexArray<Integer>.CreateFromRange([
     [1, 2],       // Dim1: Low=1 (1始まり)
     [-1, -1],     // Dim2: Low=-1 (負数)
     [2021, 2023], // Dim3: Low=2021 (巨大な正数)
     [0, 3]        // Dim4: Low=0 (0始まり)
-  ], vec);
+  ]); //, vec);
 
 
   expectedValue := 0;
@@ -184,9 +184,56 @@ begin
   Log('--- テスト成功：カオスなインデックス設定でも連番を完全走破！ ---');
 end;
 
+const
+  // [奥行, 行, 列] のイメージ
+  StaticData3D: array[-1..1, 1..3, 0..1] of Integer = (
+    ( (111, 112), (121, 122), (131, 132) ), // 1ページ目
+    ( (111, 112), (131, 444), (131, 132) ), // 1ページ目
+    ( (211, 212), (221, 222), (231, 253) )  // 3ページ目
+  );
+
 procedure TForm1.Button2Click(Sender: TObject);
+var
+  Flex: TFlexArray<Integer>;
+  Transposed: TFlexArray<Integer>;
+  p: integer;
 begin
-TestUltimateChaosSlice
+  Flex := TFlexArray<Integer>.CreateFromRange(
+    [
+      [System.Low(StaticData3D),    System.High(StaticData3D)],    // 第1次元: 1..2
+      [System.Low(StaticData3D[1]), System.High(StaticData3D[1])], // 第2次元: 1..3
+      [System.Low(StaticData3D[1,1]), System.High(StaticData3D[1,1])] // 第3次元: 1..2
+    ]
+//    TArray<Integer>(@StaticData3D),
+//    True
+  );
+
+  // Julia方式: Axes[1, 2, 3] の並び順を [3,
+  // --- 転置前の表示 ---
+  Log('=== Original 3D Array (Page, Row, Col) ===');
+  for p := Flex.Low(1) to Flex.High(1) do
+  begin
+    LOg(Format('[Page %d]', [p]));
+    // 1次元目(Page)でスライスして、残りの2次元をToStringで表示
+    Log(Flex.ChooseSlice(1, p).ToString);
+    Log('');
+  end;
+
+  LOg('------------------------------------------');
+
+  // --- 転置後の表示 ([3, 2, 1] への転置) ---
+  Transposed := Flex.Transpose([3, 2, 1]);
+  Transposed := Transposed.Transpose([2,1,3]);
+//  Transposed := Transposed.Transpose([2, 3, 1]);
+  Log('=== Transposed 3D Array (New Page = Old Col) ===');
+  for p := Transposed.Low(1) to Transposed.High(1) do
+  begin
+    Log(Format('[New Page %d]', [p]));
+    Log(Transposed.ToString);
+    Log('');
+  end;
 end;
+
+
 
 end.
