@@ -93,7 +93,7 @@ type
     // 既存の FlexArray を「コピー」して実体を作成
     constructor CreateFromFlexArray(const ASrc: TFlexArray<T>); overload;
     // 既存の動的配列を「参照」する (Julia-style View)
-    constructor ViewFromArray(var ASrc: TArray<T>; ABaseIndex: Integer); overload;
+    constructor ViewFromArray(const ASrc: TArray<T>; ABaseIndex: Integer); overload;
 
     { --- 4. 構造の再定義 (Reshape) --- }
 
@@ -316,7 +316,7 @@ end;
 // [戻値] なし
 // [備考] CreateFromArrayと異なり、変更は元の配列に反映される
 //////////////////////////////////////////////////////////////////////////////////////
-constructor TFlexArray<T>.ViewFromArray(var ASrc: TArray<T>; ABaseIndex: Integer);
+constructor TFlexArray<T>.ViewFromArray(const ASrc: TArray<T>; ABaseIndex: Integer);
 var
   Ranges: array of TArray<Integer>;
 begin
@@ -994,9 +994,11 @@ begin
   if (Self.Dimensions = 1) and (Another.Dimensions = 1) then
   begin
     // [1,2,3] → [[1,2,3]] (行ベクトル)
-    SelfExpanded := Self.Reshape([1, Self.FDims[0].Len], 1);
+    SelfExpanded := TFlexArray<T>.ViewFromArray(TArray<T>(Self.FHead), 1);
+    SelfExpanded.Reshape([1, Self.FDims[0].Len], 1);
     // [4,5,6] → [[4,5,6]] (行ベクトル)
-    AnotherExpanded := Another.Reshape([1, Another.FDims[0].Len], 1);
+    AnotherExpanded := TFlexArray<T>.ViewFromArray(TArray<T>(Another.FHead), 1);
+    AnotherExpanded.Reshape([1, Another.FDims[0].Len], 1);
     Result := SelfExpanded.Concat(AnotherExpanded, 1);
     Exit;
   end;
@@ -1006,7 +1008,8 @@ begin
   if (Self.Dimensions = 1) and (Another.Dimensions = 2) then
   begin
     // [1,2] → [[1,2]] (行ベクトル)
-    SelfExpanded := Self.Reshape([1, Self.FDims[0].Len], 1);
+    SelfExpanded := TFlexArray<T>.ViewFromArray(TArray<T>(Self.FHead), 1);
+    SelfExpanded.Reshape([1, Self.FDims[0].Len], 1);
     // 結合可能性チェック
     if SelfExpanded.FDims[1].Len <> Another.FDims[1].Len then
       raise Exception.CreateFmt('VStack: 列数が一致しません。Self=%d, Another=%d', 
@@ -1020,7 +1023,8 @@ begin
   if (Self.Dimensions = 2) and (Another.Dimensions = 1) then
   begin
     // [5,6] → [[5,6]] (行ベクトル)
-    AnotherExpanded := Another.Reshape([1, Another.FDims[0].Len], 1);
+    AnotherExpanded := TFlexArray<T>.ViewFromArray(TArray<T>(Another.FHead), 1);
+    AnotherExpanded.Reshape([1, Another.FDims[0].Len], 1);
     // 結合可能性チェック
     if Self.FDims[1].Len <> AnotherExpanded.FDims[1].Len then
       raise Exception.CreateFmt('VStack: 列数が一致しません。Self=%d, Another=%d', 
@@ -1052,7 +1056,8 @@ begin
   if (Self.Dimensions = 1) and (Another.Dimensions = 2) then
   begin
     // Selfを列ベクトルに変換: [1,2] → [[1],[2]]
-    SelfExpanded := Self.Reshape([Self.FDims[0].Len, 1], 1);
+    SelfExpanded := TFlexArray<T>.ViewFromArray(TArray<T>(Self.FHead), 1);
+    SelfExpanded.Reshape([Self.FDims[0].Len, 1], 1);
     // 結合可能性チェック: Selfの行数とAnotherの行数が一致するか
     if SelfExpanded.FDims[0].Len <> Another.FDims[0].Len then
       raise Exception.CreateFmt('HStack: 行数が一致しません。Self=%d, Another=%d', 
@@ -1066,7 +1071,8 @@ begin
   if (Self.Dimensions = 2) and (Another.Dimensions = 1) then
   begin
     // Anotherを列ベクトルに変換: [5,6] → [[5],[6]]
-    AnotherExpanded := Another.Reshape([Another.FDims[0].Len, 1], 1);
+    AnotherExpanded := TFlexArray<T>.ViewFromArray(TArray<T>(Another.FHead), 1);
+    AnotherExpanded.Reshape([Another.FDims[0].Len, 1], 1);
     // 結合可能性チェック: Selfの行数とAnotherの行数が一致するか
     if Self.FDims[0].Len <> AnotherExpanded.FDims[0].Len then
       raise Exception.CreateFmt('HStack: 行数が一致しません。Self=%d, Another=%d', 
@@ -1110,10 +1116,8 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.AppendArray(const Another: TArray<T>): TFlexArray<T>;
 begin
-  CheckDimension(1);
-//  Result := Self.Concat(Another, 1);
+  Result := Self.Concat(TFlexArray<T>.ViewFromArray(Another, 1), 1);
 end;
-
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 1次元配列の末尾に要素を追加
