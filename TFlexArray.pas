@@ -57,7 +57,7 @@ type
     procedure CheckDimension(ExpectedDim: Integer);
     procedure IncCoords(var CurrentCoords: TArray<Integer>;
       const Ranges: array of TArray<Integer>);
-    function GetMinCoords: TArray<Integer>;
+    procedure InitializeCoords(var Coords: TArray<Integer>);
     function GetLinearValue(Index: NativeInt): T; inline;
     procedure SetLinearValue(Index: NativeInt; const Value: T); inline;
 {$IFDEF FLEXARRAY_ENABLE_LEN}
@@ -78,11 +78,12 @@ type
     function High: Integer; overload;
     function Low(Dim: Integer): Integer; overload;
     function High(Dim: Integer): Integer; overload;
-    function Dimensions: Integer;
+    function GetDimensionCount: Integer; inline;
     property Items[const Indices: array of Integer]: T read GetValue write SetValue; default;
     property Elements[Index: NativeInt]: T read GetLinearValue write SetLinearValue;
-    property TotalSize: NativeInt read FTotalSize;
+    property DimensionCount: Integer read GetDimensionCount;
 
+    property TotalSize: NativeInt read FTotalSize;
     procedure Reshape(const AShapes: array of Integer; ABaseIndex: Integer);
     procedure ReshapeMatrix(ARows, ACols: Integer; ABaseIndex: Integer);
     procedure ReshapeRange(const ARange: TArray<Integer>); overload; // 1D
@@ -246,7 +247,7 @@ end;
 // [概要] 動的一次元配列からFlexArrayを生成する
 // [引数] 元の動的配列, 開始インデックス
 // [戻値] なし
-// [使用例] TFlexArray<Integer>.CreateFromArray([2,2,3], 1)  // 1始まりの2x2x3要素配列
+// [使用例] TFlexArray<Integer>.CreateFromArray(arr, 1)
 //////////////////////////////////////////////////////////////////////////////////////
 constructor TFlexArray<T>.CreateFromArray(const ASrc: TArray<T>; ABaseIndex: Integer);
 var
@@ -307,22 +308,24 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
-// [概要] 指定行をスライスして取得
+// [概要] 指定行1次元を取得
 // [引数] 行インデックス
-// [戻値] 行のスライス配列（1次元配列）
+// [戻値] 行の1次元配列
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.ChooseRow(RowIndex: Integer): TFlexArray<T>;
 begin
+  CheckDimension(2);
   Result := ChooseSlice(1, RowIndex);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
-// [概要] 指定列をスライスして取得
+// [概要] 指定列を1次元で取得
 // [引数] 列インデックス
-// [戻値] 列のスライス配列（1次元配列）
+// [戻値] 列の1次元配列
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.ChooseCol(ColIndex: Integer): TFlexArray<T>;
 begin
+  CheckDimension(2);
   Result := ChooseSlice(2, ColIndex);
 end;
 
@@ -333,10 +336,8 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.ChooseSlice(Index: Integer): T;
 begin
-  if Dimensions = 1 then
-    Result := Self[Index]
-  else
-    raise Exception.Create('1次元配列専用です。多次元配列ではDimensionを指定してください');
+  CheckDimension(1);
+  Result := Self[Index]
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -346,18 +347,18 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.ChooseSlice(Dimension: Integer; Index: Integer): TFlexArray<T>;
 var
-  i, d: Integer;
+  i, j, d: Integer;
   NewRanges: array of TArray<Integer>;
-  DestCoords: TArray<Integer>;
+  DestCoords, SrcCoords: TArray<Integer>;
 begin
   // 1. NewRangesの計算（指定次元を除外）
   // 3次元配列 [1..3, 1..4, 1..5] から Dimension=2 のスライスを取る場合
   // → NewRanges = [[1,3], [1,5]] となり、2次元配列が生成される
-  SetLength(NewRanges, Self.Dimensions - 1);
+  SetLength(NewRanges, Self.DimensionCount - 1);
   d := 0;
 
   // 元の次元数分ループ
-  for i := 1 to Self.Dimensions do
+  for i := 1 to Self.DimensionCount do
   begin
     if i <> Dimension then
     begin
@@ -370,20 +371,19 @@ begin
   Result := TFlexArray<T>.CreateFromRange(NewRanges);
   
   // 3. Result 用の座標を初期化
-  DestCoords := Result.GetMinCoords;
+  Result.InitializeCoords(DestCoords);
 
   // 4. データを埋める（座標変換付き）
   for i := 0 to Result.FTotalSize - 1 do
   begin
     // 転置後配列における現在の線形位置から論理座標(x,y,z...)を出す
-    var SrcCoords: TArray<Integer>;
-    SetLength(SrcCoords, Dimensions);
+    SetLength(SrcCoords, DimensionCount);
     
     // 元の配列の座標を再構築
     d := 0; // DestCoords用のインデックス(元の次元数より１つ少ない)
     
     // 元の次元数分ループ
-    for var j := 0 to System.High(FDims) do
+    for j := 0 to System.High(FDims) do
     begin
       if (j + 1) = Dimension then
         SrcCoords[j] := Index // 指定された次元は固定値
@@ -519,7 +519,7 @@ begin
       try
         Result := Val.ToString;  // とりあえず実行
       except
-        Result := 'この型は表示できません';  // 例外ならデフォルト
+        Result := 'この型は表示できません';  // 例外時
       end;
     end;
   end;
@@ -613,20 +613,20 @@ function TFlexArray<T>.Transpose(const NewDimensions: array of Integer): TFlexAr
 var
   i, d: Integer;
   NewRanges: array of TArray<Integer>;
-  DestCoords: TArray<Integer>;
+  DestCoords, SrcCoords: TArray<Integer>;
   InternalAxes: TArray<Integer>;
 begin
   // 1. バリデーション
-  if System.Length(NewDimensions) <> Self.Dimensions then
+  if System.Length(NewDimensions) <> Self.DimensionCount then
     raise Exception.Create('Transpose: 指定された軸の数が配列の次元数と一致しません。');
 
   // 2. 1-based -> 0-based 変換と NewRanges の計算
-  SetLength(InternalAxes, Dimensions);
-  SetLength(NewRanges, Dimensions);
+  SetLength(InternalAxes, DimensionCount);
+  SetLength(NewRanges, DimensionCount);
   
-  for i := 0 to Dimensions - 1 do
+  for i := 0 to DimensionCount - 1 do
   begin
-    if (NewDimensions[i] < 1) or (NewDimensions[i] > Dimensions) then
+    if (NewDimensions[i] < 1) or (NewDimensions[i] > DimensionCount) then
       raise Exception.CreateFmt('Transpose: 次元指定 %d が範囲外です。', [NewDimensions[i]]);
       
     InternalAxes[i] := NewDimensions[i] - 1;
@@ -638,14 +638,13 @@ begin
   Result := TFlexArray<T>.CreateFromRange(NewRanges);
   
   // 4. Result 用の座標を初期化
-  DestCoords := Result.GetMinCoords;
+  Result.InitializeCoords(DestCoords);
 
   // 5. データを埋める（座標変換付き）
   for i := 0 to Result.FTotalSize - 1 do
   begin
     // 転置後配列における現在の線形位置から論理座標(x,y,z...)を出す
-    var SrcCoords: TArray<Integer>;
-    SetLength(SrcCoords, Dimensions);
+    SetLength(SrcCoords, DimensionCount);
     
     // 元の配列の座標を再構築
     for d := 0 to System.High(InternalAxes) do
@@ -736,9 +735,9 @@ end;
 // [引数] なし
 // [戻値] 次元数
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.Dimensions: Integer; 
-begin 
-  Result := System.Length(FDims); 
+function TFlexArray<T>.GetDimensionCount: Integer;
+begin
+  Result := System.Length(FDims);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -836,17 +835,17 @@ end;
 
 
 //////////////////////////////////////////////////////////////////////////////////////
-// [概要] 各次元の最小座標を取得
-// [引数] なし
-// [戻値] 各次元の最小値配列
+// [概要] 座標を初期化
+// [引数] 初期化する座標配列
+// [戻値] なし
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.GetMinCoords: TArray<Integer>;
+procedure TFlexArray<T>.InitializeCoords(var Coords: TArray<Integer>);
 var
   i: Integer;
 begin
-  SetLength(Result, System.Length(FDims));
+  SetLength(Coords, System.Length(FDims));
   for i := 0 to System.High(FDims) do
-    Result[i] := FDims[i].Low;
+    Coords[i] := FDims[i].Low;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -896,8 +895,8 @@ begin
   DimIdx := TargetDim - 1;
 
   // 2. 新しい形状（Ranges）の計算
-  SetLength(NewRanges, Self.Dimensions);
-  for d := 0 to Self.Dimensions - 1 do
+  SetLength(NewRanges, Self.DimensionCount);
+  for d := 0 to Self.DimensionCount - 1 do
   begin
     SetLength(NewRanges[d], 2); // [Low, High] の 2要素配列
     NewRanges[d][0] := Self.FDims[d].Low; // LowBoundはSelfに合わせる
@@ -913,7 +912,7 @@ begin
   SelfSizeAlongDim := Self.FDims[DimIdx].Len;
   
   // 4. Result 用の座標を初期化
-  DestCoords := Result.GetMinCoords;
+  Result.InitializeCoords(DestCoords);
 
   // 5. Self のデータを埋める
   for i := 0 to Self.FTotalSize - 1 do
@@ -956,7 +955,7 @@ var
 begin
   // 例: [1,2,3] + [4,5,6] → [[1,2,3],[4,5,6]] (2x3)
   // 注意: [1,2,3]は[[1,2,3]]に、[4,5,6]は[[4,5,6]]に変換してから2次元同士で結合
-  if (Self.Dimensions = 1) and (Another.Dimensions = 1) then
+  if (Self.DimensionCount = 1) and (Another.DimensionCount = 1) then
   begin
     // [1,2,3] → [[1,2,3]] (行ベクトル)
     SelfExpanded := TFlexArray<T>.ViewFromArray(TArray<T>(Self.FHead), 1);
@@ -970,7 +969,7 @@ begin
 
   // 例: [1,2] + [[3,4],[5,6]] → [[1,2],[3,4],[5,6]] (3x2)
   // 注意: [1,2]は[[1,2]]に変換され、[[3,4],[5,6]]の上に結合
-  if (Self.Dimensions = 1) and (Another.Dimensions = 2) then
+  if (Self.DimensionCount = 1) and (Another.DimensionCount = 2) then
   begin
     // [1,2] → [[1,2]] (行ベクトル)
     SelfExpanded := TFlexArray<T>.ViewFromArray(TArray<T>(Self.FHead), 1);
@@ -985,7 +984,7 @@ begin
 
   // 例: [[1,2],[3,4]] + [5,6] → [[1,2],[3,4],[5,6]] (3x2)
   // 注意: [5,6]は[[5,6]]に変換され、[[1,2],[3,4]]の下に結合
-  if (Self.Dimensions = 2) and (Another.Dimensions = 1) then
+  if (Self.DimensionCount = 2) and (Another.DimensionCount = 1) then
   begin
     // [5,6] → [[5,6]] (行ベクトル)
     AnotherExpanded := TFlexArray<T>.ViewFromArray(TArray<T>(Another.FHead), 1);
@@ -1010,7 +1009,7 @@ var
   SelfExpanded, AnotherExpanded: TFlexArray<T>;
 begin
   // 例: [1,2,3] + [4,5,6] → [1,2,3,4,5,6] (1次元)
-  if (Self.Dimensions = 1) and (Another.Dimensions = 1) then
+  if (Self.DimensionCount = 1) and (Another.DimensionCount = 1) then
   begin
     Result := Self.AppendArray(Another);
     Exit;
@@ -1018,7 +1017,7 @@ begin
 
   // 例: [1,2] + [[3,4],[5,6]] → [[1,3,4],[2,5,6]] (2x3)
   // 注意: [1,2]は[[1],[2]]（列ベクトル）に変換され、左側に結合される
-  if (Self.Dimensions = 1) and (Another.Dimensions = 2) then
+  if (Self.DimensionCount = 1) and (Another.DimensionCount = 2) then
   begin
     // Selfを列ベクトルに変換: [1,2] → [[1],[2]]
     SelfExpanded := TFlexArray<T>.ViewFromArray(TArray<T>(Self.FHead), 1);
@@ -1033,7 +1032,7 @@ begin
 
   // 例: [[1,2],[3,4]] + [5,6] → [[1,2,5],[3,4,6]] (2x3)
   // 注意: [5,6]は[[5],[6]]に変換され、[[1,2],[3,4]]の右側に結合
-  if (Self.Dimensions = 2) and (Another.Dimensions = 1) then
+  if (Self.DimensionCount = 2) and (Another.DimensionCount = 1) then
   begin
     // Anotherを列ベクトルに変換: [5,6] → [[5],[6]]
     AnotherExpanded := TFlexArray<T>.ViewFromArray(TArray<T>(Another.FHead), 1);
@@ -1048,7 +1047,7 @@ begin
   end;
 
   // 例: [[1,2],[3,4]] + [[5,6],[7,8]] → [[1,2,5,6],[3,4,7,8]] (2x4)
-  if (Self.Dimensions = 2) and (Another.Dimensions = 2) then
+  if (Self.DimensionCount = 2) and (Another.DimensionCount = 2) then
   begin
     // 結合可能性チェック: 行数が一致するか
     if Self.FDims[0].Len <> Another.FDims[0].Len then
@@ -1060,7 +1059,7 @@ begin
 
   // その他の組み合わせは未サポート
   raise Exception.CreateFmt('HStack: 未対応の次元の組み合わせです。Self=%d次元, Another=%d次元', 
-    [Self.Dimensions, Another.Dimensions]);
+    [Self.DimensionCount, Another.DimensionCount]);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
