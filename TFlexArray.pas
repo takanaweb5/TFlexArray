@@ -351,13 +351,11 @@ var
   NewRanges: array of TArray<Integer>;
   DestCoords, SrcCoords: TArray<Integer>;
 begin
-  // 1. NewRangesの計算（指定次元を除外）
+  // NewRangesの計算（指定次元を除外）
   // 3次元配列 [1..3, 1..4, 1..5] から Dim=2 のスライスを取る場合
   // → NewRanges = [[1,3], [1,5]] となり、2次元配列が生成される
   SetLength(NewRanges, Self.DimensionCount - 1);
   d := 0;
-
-  // 元の次元数分ループ
   for i := 1 to Self.DimensionCount do
   begin
     if i <> Dim then
@@ -366,22 +364,15 @@ begin
       Inc(d);
     end;
   end;
-
-  // 2. 結果用配列の生成
   Result := TFlexArray<T>.CreateFromRange(NewRanges);
-  
-  // 3. Result 用の座標を初期化
-  Result.InitializeCoords(DestCoords);
 
-  // 元の配列用の座標配列を準備
+  // Resultの各要素に対応するSelfの該当Index要素をコピー
   SetLength(SrcCoords, DimensionCount);
-
-  // 4. データを埋める（座標変換付き）
+  Result.InitializeCoords(DestCoords);
   for i := 0 to Result.FTotalSize - 1 do
   begin
-    // 元の配列の座標を再構築
     d := 0; // DestCoords用のインデックス(元の次元数より１つ少ない)
-    
+
     // 元の次元数分ループ
     for j := 0 to System.High(FDims) do
     begin
@@ -393,12 +384,8 @@ begin
         Inc(d);
       end;
     end;
-    
-    // GetOffsetを通じて正しい物理位置を特定し、コピー
-    if (Self.FHead <> nil) then
-      Result.FData[i] := Self.Elements[Self.GetOffset(SrcCoords)];
 
-    // 座標を1つ進めるイテレーター
+    Result.FData[i] := Self.Elements[Self.GetOffset(SrcCoords)];
     Result.IncCoords(DestCoords, NewRanges);
   end;
 end;
@@ -615,41 +602,31 @@ var
   NewRanges: array of TArray<Integer>;
   DestCoords, SrcCoords: TArray<Integer>;
 begin
-  // 1. バリデーション
+  // 整合性チェック
   if System.Length(NewDims) <> Self.DimensionCount then
     raise Exception.Create('Transpose: 指定された軸の数が配列の次元数と一致しません。');
-
   for i := 0 to DimensionCount - 1 do
     if (NewDims[i] < 1) or (NewDims[i] > DimensionCount) then
       raise Exception.CreateFmt('Transpose: 次元指定 %d が範囲外です。', [NewDims[i]]);
 
-  // 2. NewRanges の計算
+  // NewRanges の計算
   SetLength(NewRanges, DimensionCount);
   for i := 0 to DimensionCount - 1 do
     NewRanges[i] := [Self.Low(NewDims[i]), Self.High(NewDims[i])];
-
-  // 3. 結果用配列の生成
   Result := TFlexArray<T>.CreateFromRange(NewRanges);
-  
-  // 4. Result 用の座標を初期化
-  Result.InitializeCoords(DestCoords);
 
-  // 5. データを埋める（座標変換付き）
+  // Resultの各要素に対応するSelfの転置後要素をコピー
+  Result.InitializeCoords(DestCoords);
   SetLength(SrcCoords, DimensionCount);
   for i := 0 to Result.FTotalSize - 1 do
   begin
-    // 元の配列の座標を再構築
     for d := 0 to DimensionCount - 1 do
     begin
       // 次元を入れ替え（注意：1-basedインデックスを0-basedインデックスに変換）
       SrcCoords[NewDims[d] - 1] := DestCoords[d];
     end;
-    
-    // GetOffsetを通じて正しい物理位置を特定し、コピー
-    if (Self.FHead <> nil) then
-      Result.FData[i] := Self.Elements[Self.GetOffset(SrcCoords)];
 
-    // 座標を1つ進めるイテレーター
+    Result.FData[i] := Self.Elements[Self.GetOffset(SrcCoords)];
     Result.IncCoords(DestCoords, NewRanges);
   end;
 end;
@@ -883,10 +860,10 @@ var
   SelfSizeAlongDim: Integer;
   i, d: Integer;
 begin
-  // 1. 次元の正規化 (1-based to 0-based)
+  // 1-based to 0-based
   DimIdx := TargetDim - 1;
 
-  // 2. 新しい形状（Ranges）の計算
+  // NewRangesの計算
   SetLength(NewRanges, Self.DimensionCount);
   for d := 0 to Self.DimensionCount - 1 do
   begin
@@ -898,40 +875,23 @@ begin
     else
       NewRanges[d][1] := Self.FDims[d].High;
   end;
-
-  // 3. 結果用配列の生成
   Result := TFlexArray<T>.CreateFromRange(NewRanges);
-  SelfSizeAlongDim := Self.FDims[DimIdx].Len;
-  
-  // 4. Result 用の座標を初期化
-  Result.InitializeCoords(DestCoords);
 
-  // 5. Self のデータを埋める
+  // Self のデータを埋める
+  Result.InitializeCoords(DestCoords);
   for i := 0 to Self.FTotalSize - 1 do
   begin
-    // GetOffsetを通じて正しい物理位置を特定し、コピー
-    if (Self.FHead <> nil) then
-      Result.FData[i] := Self.Elements[Self.GetOffset(DestCoords)];
-
-    // 座標を1つ進めるイテレーターの一種
+    Result.FData[i] := Self.Elements[Self.GetOffset(DestCoords)];
     Result.IncCoords(DestCoords, NewRanges);
   end;
 
-  // 6. Another のデータを埋める
+  // Another のデータを埋める
+  SelfSizeAlongDim := Self.FDims[DimIdx].Len;
   for i := Self.FTotalSize to Result.FTotalSize - 1 do
   begin
-    // Another のローカル座標に合わせる（※ 抽出後に必ず戻すこと）
     DestCoords[DimIdx] := DestCoords[DimIdx] - SelfSizeAlongDim;
-  
-    // GetOffsetを通じて正しい物理位置を特定し、コピー
-    if (Another.FHead <> nil) then
-      Result.FData[i] := Another.Elements[Another.GetOffset(DestCoords)];
-
-    // 約束の通り、座標を元に戻す
+    Result.FData[i] := Another.Elements[Another.GetOffset(DestCoords)];
     DestCoords[DimIdx] := DestCoords[DimIdx] + SelfSizeAlongDim;
-  
-    // 座標を1つ進めるイテレーターの一種
-    // [1,1,1] → [1,1,2]  繰上がり時 [1,1,3] → [1,2,1]
     Result.IncCoords(DestCoords, NewRanges);
   end;
 end;
