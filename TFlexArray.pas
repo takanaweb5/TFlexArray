@@ -55,7 +55,8 @@ type
     function InternalSetup(const Ranges: array of TArray<Integer>): NativeInt;
     function ValueToStr(const V: T): string;
     procedure CheckDimension(ExpectedDim: Integer);
-    procedure CheckBaseIndexIsOne;
+    procedure NormalizeToBaseIndex(TargetBase: Integer);
+    function GetCompatibleBaseIndex(const Another: TFlexArray<T>): Integer;
     procedure IncCoords(var CurrentCoords: TArray<Integer>;
       const Ranges: array of TArray<Integer>);
     procedure InitializeCoords(var Coords: TArray<Integer>);
@@ -311,22 +312,47 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
-// [概要] すべての次元が1ベースインデックスかチェック
-// [引数] なし
+// [概要] 指定されたベースインデックスに正規化
+// [引数] TargetBase - 目標のベースインデックス（0または1）
 // [戻値] なし
-// [備考] 1ベースでない場合は例外を投げる
+// [備考] データは保持したまま次元情報のみ変更
 //////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.CheckBaseIndexIsOne;
+procedure TFlexArray<T>.NormalizeToBaseIndex(TargetBase: Integer);
+var
+  i: Integer;
+  Shapes: TArray<Integer>;
+begin
+  // 現在の形状を取得
+  SetLength(Shapes, System.Length(FDims));
+  for i := 0 to System.High(FDims) do
+    Shapes[i] := FDims[i].Len;
+  
+  // Reshapeを呼び出し（要素数チェックは不要）
+  Reshape(Shapes, TargetBase);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] SelfとAnotherのベースインデックスをチェックし、統一されたベースインデックスを返す
+// [引数] Another - 比較対象の配列
+// [戻値] Integer - 統一されたベースインデックス
+// [備考] すべてが一致の場合：ベースインデックスを返す。不一致の場合：内部で例外
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.GetCompatibleBaseIndex(const Another: TFlexArray<T>): Integer;
 var
   i: Integer;
 begin
-  for i := 0 to System.High(FDims) do
+  Result := Self.FDims[0].Low;
+
+  for i := 0 to System.High(Self.FDims) do
   begin
-    if FDims[i].Low <> 1 then
-      raise Exception.CreateFmt(
-        'Concat系操作は1ベースインデックスのみ対応です。第%d次元のLow=%dですが、1である必要があります。',
-        [i + 1, FDims[i].Low]
-      );
+    if Self.FDims[i].Low <> Result then
+      raise Exception.Create('GetCompatibleBaseIndex: 各配列のすべての次元で同じベースインデックスを使用する必要があります。混合ベースは未対応です。');
+  end;
+
+  for i := 0 to System.High(Another.FDims) do
+  begin
+    if Another.FDims[i].Low <> Result then
+      raise Exception.CreateFmt('GetCompatibleBaseIndex: 異なるベースインデックスの配列は結合できません。Self=%d, Another=%d', [Result, Another.FDims[i].Low]);
   end;
 end;
 
@@ -964,30 +990,44 @@ function TFlexArray<T>.Concat(const Another: TFlexArray<T>; TargetDim: Integer):
 var
   SelfReady, AnotherReady: TFlexArray<T>;
   DimDiff: Integer;
+  BaseIndex: Integer;
 begin
-  // 1ベースインデックスチェック
-  Self.CheckBaseIndexIsOne;
-  Another.CheckBaseIndexIsOne;
+  // ベースインデックスのチェックと取得
+  BaseIndex := Self.GetCompatibleBaseIndex(Another);
+  
+  SelfReady := Self;
+  AnotherReady := Another;
+
+  // 1ベース以外は1ベースに正規化
+  if BaseIndex <> 1 then
+  begin
+    SelfReady.NormalizeToBaseIndex(1);
+    AnotherReady.NormalizeToBaseIndex(1);
+  end;
   
   // 次元数のチェック
-  DimDiff := Abs(Self.DimensionCount - Another.DimensionCount);
+  DimDiff := Abs(SelfReady.DimensionCount - AnotherReady.DimensionCount);
   if DimDiff > 1 then
     raise Exception.Create('Concat: 次元数の差が2以上です。対応範囲外です。');
 
   // SelfReadyの設定
-  if Self.DimensionCount < Another.DimensionCount then
-    SelfReady := PromoteDimension(Self, TargetDim)
+  if SelfReady.DimensionCount < AnotherReady.DimensionCount then
+    SelfReady := PromoteDimension(SelfReady, TargetDim)
   else
-    SelfReady := Self;
+    SelfReady := SelfReady;
 
   // AnotherReadyの設定  
-  if Another.DimensionCount < Self.DimensionCount then
-    AnotherReady := PromoteDimension(Another, TargetDim)
+  if AnotherReady.DimensionCount < SelfReady.DimensionCount then
+    AnotherReady := PromoteDimension(AnotherReady, TargetDim)
   else
-    AnotherReady := Another;
+    AnotherReady := AnotherReady;
 
   // 同一次元結合を実行
   Result := ConcatEqualDim(SelfReady, AnotherReady, TargetDim);
+  
+  // 元のベースインデックスに戻す
+  if BaseIndex <> 1 then
+    Result.NormalizeToBaseIndex(BaseIndex);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -998,30 +1038,40 @@ end;
 function TFlexArray<T>.VStack(const Another: TFlexArray<T>): TFlexArray<T>;
 var
   SelfReady, AnotherReady: TFlexArray<T>;
+  BaseIndex: Integer;
 begin
-  // 1ベースインデックスチェック
-  Self.CheckBaseIndexIsOne;
-  Another.CheckBaseIndexIsOne;
+  // ベースインデックスのチェックと取得
+  BaseIndex := Self.GetCompatibleBaseIndex(Another);
   
+  SelfReady := Self;
+  AnotherReady := Another;
+
+  // 1ベース以外は1ベースに正規化
+  if BaseIndex <> 1 then
+  begin
+    SelfReady.NormalizeToBaseIndex(1);
+    AnotherReady.NormalizeToBaseIndex(1);
+  end;
+
   // 次元数のチェック（1次元と2次元のみ対応）
-  if not ((Self.DimensionCount in [1, 2]) and (Another.DimensionCount in [1, 2])) then
+  if not ((SelfReady.DimensionCount in [1, 2]) and (AnotherReady.DimensionCount in [1, 2])) then
     raise Exception.Create('VStack: 1次元または2次元配列のみ対応しています');
 
-  if Self.DimensionCount = 1 then
+  if SelfReady.DimensionCount = 1 then
   begin
     // [1,2,3] → [[1,2,3]] (行ベクトル)
-    SelfReady := PromoteDimension(Self, 1);
+    SelfReady := PromoteDimension(SelfReady, 1);
   end
   else
-    SelfReady := Self;
+    SelfReady := SelfReady;
 
-  if Another.DimensionCount = 1 then
+  if AnotherReady.DimensionCount = 1 then
   begin
     // [4,5,6] → [[4,5,6]] (行ベクトル)
-    AnotherReady := PromoteDimension(Another, 1);
+    AnotherReady := PromoteDimension(AnotherReady, 1);
   end
   else
-    AnotherReady := Another;
+    AnotherReady := AnotherReady;
 
   // 結合可能性チェック
   if SelfReady.FDims[1].Len <> AnotherReady.FDims[1].Len then
@@ -1030,6 +1080,10 @@ begin
 
   // 2次元同士で結合
   Result := SelfReady.Concat(AnotherReady, 1);
+  
+  // 元のベースインデックスに戻す
+  if BaseIndex <> 1 then
+    Result.NormalizeToBaseIndex(BaseIndex);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1040,31 +1094,41 @@ end;
 function TFlexArray<T>.HStack(const Another: TFlexArray<T>): TFlexArray<T>;
 var
   SelfReady, AnotherReady: TFlexArray<T>;
+  BaseIndex: Integer;
 begin
-  // 1ベースインデックスチェック
-  Self.CheckBaseIndexIsOne;
-  Another.CheckBaseIndexIsOne;
+  // ベースインデックスのチェックと取得
+  BaseIndex := Self.GetCompatibleBaseIndex(Another);
   
+  SelfReady := Self;
+  AnotherReady := Another;
+
+  // 1ベース以外は1ベースに正規化
+  if BaseIndex <> 1 then
+  begin
+    SelfReady.NormalizeToBaseIndex(1);
+    AnotherReady.NormalizeToBaseIndex(1);
+  end;
+
   // 次元数のチェック（1次元と2次元のみ対応）
-  if not ((Self.DimensionCount in [1, 2]) and (Another.DimensionCount in [1, 2])) then
+  if not ((SelfReady.DimensionCount in [1, 2]) and (AnotherReady.DimensionCount in [1, 2])) then
     raise Exception.Create('HStack: 1次元または2次元配列のみ対応しています');
 
   // Selfの準備
-  if Self.DimensionCount = 1 then
+  if SelfReady.DimensionCount = 1 then
   begin
     // [1,2,3] → [[1],[2],[3]] (列ベクトル)
-    SelfReady := PromoteDimension(Self, 2);
+    SelfReady := PromoteDimension(SelfReady, 2);
   end
   else
-    SelfReady := Self;
+    SelfReady := SelfReady;
 
-  if Another.DimensionCount = 1 then
+  if AnotherReady.DimensionCount = 1 then
   begin
     // [4,5,6] → [[4],[5],[6]] (列ベクトル)
-    AnotherReady := PromoteDimension(Another, 2);
+    AnotherReady := PromoteDimension(AnotherReady, 2);
   end
   else
-    AnotherReady := Another;
+    AnotherReady := AnotherReady;
 
   // 結合可能性チェック
   if SelfReady.FDims[0].Len <> AnotherReady.FDims[0].Len then
@@ -1073,6 +1137,10 @@ begin
 
   // 2次元同士で結合
   Result := SelfReady.Concat(AnotherReady, 2);
+  
+  // 元のベースインデックスに戻す
+  if BaseIndex <> 1 then
+    Result.NormalizeToBaseIndex(BaseIndex);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
