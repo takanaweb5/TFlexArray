@@ -650,13 +650,23 @@ var
   i, d: Integer;
   NewRanges: array of TArray<Integer>;
   DestCoords, SrcCoords: TArray<Integer>;
+  DimUsed: array of Boolean;
 begin
   // 整合性チェック
   if System.Length(NewDims) <> Self.DimensionCount then
     raise Exception.Create('Transpose: 指定された軸の数が配列の次元数と一致しません。');
+  
+  // すべての次元が使用されているかチェック
+  SetLength(DimUsed, DimensionCount);
   for i := 0 to DimensionCount - 1 do
+  begin
     if (NewDims[i] < 1) or (NewDims[i] > DimensionCount) then
       raise Exception.CreateFmt('Transpose: 次元指定 %d が範囲外です。', [NewDims[i]]);
+    DimUsed[NewDims[i] - 1] := True;
+  end;
+  for i := 0 to DimensionCount - 1 do
+    if not DimUsed[i] then
+      raise Exception.CreateFmt('Transpose: 次元 %d が指定されていません。', [i + 1]);
 
   // NewRanges の計算
   SetLength(NewRanges, DimensionCount);
@@ -1031,7 +1041,7 @@ begin
     AnotherReady := PromoteDimension(AnotherReady, TargetDim);
 
   // 同一次元結合を実行
-  Result := ConcatEqualDim(SelfReady, AnotherReady, TargetDim);
+  Result := SelfReady.ConcatEqualDim(AnotherReady, TargetDim);
 
   // 元のベースインデックスに戻す
   if BaseIndex <> 1 then
