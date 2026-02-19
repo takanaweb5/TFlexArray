@@ -45,8 +45,8 @@ type
     FData: TArray<T>;       // 実データ保持用
     // FBaseOffset: NativeInt; // Viewとしての論理的な開始位置
     FHead: Pointer;         // 物理先頭ポインタ
-    FDims: TArray<TDimension>;
-    FTotalSize: NativeInt;
+    FDims: TArray<TDimension>;  // 次元情報（1ベース、0番目は未使用）
+    FTotalSize: NativeInt; // 全要素数
 
     function GetCoords(LinearIndex: NativeInt): TArray<Integer>;
     function GetOffset(const Indices: array of Integer): NativeInt;
@@ -136,7 +136,7 @@ end;
 // [概要] 次元情報の構築
 // [引数] 各次元の範囲配列
 // [戻値] 全要素数
-// [使用例] InternalSetup([[1, 10], [1, 10]])  
+// [使用例] InternalSetup([[1, 10], [1, 10]])
 // [備考] 各次元の範囲配列は [Low, High] のペアになっていること
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.InternalSetup(const Ranges: array of TArray<Integer>): NativeInt;
@@ -145,7 +145,7 @@ var
   CurrentStride: NativeInt;
   L, H: Integer;
 begin
-  SetLength(FDims, System.Length(Ranges));
+  SetLength(FDims, System.Length(Ranges) + 1);  // +1して0インデックスを未使用に
   CurrentStride := 1;
 
   // 後ろの次元から歩幅を計算することで多次元に対応
@@ -162,9 +162,9 @@ begin
     Assert(L <= H,
       Format('TFlexArray: 第 %d 次元の範囲が不正です (Low:%d > High:%d)', [i + 1, L, H]));
 
-    FDims[i].Low    := L;
-    FDims[i].High   := H;
-    FDims[i].Stride := CurrentStride;
+    FDims[i + 1].Low    := L;    // 1ベースで格納
+    FDims[i + 1].High   := H;
+    FDims[i + 1].Stride := CurrentStride;
 
     // 全要素数を累積計算
     CurrentStride := CurrentStride * (H - L + 1);
@@ -187,7 +187,7 @@ begin
   SetLength(Ranges, System.Length(AShapes));
   for i := 0 to System.High(AShapes) do
     Ranges[i] := [ABaseIndex, ABaseIndex + AShapes[i] - 1];
-  
+
   FTotalSize := InternalSetup(Ranges);
   SetLength(FData, FTotalSize);
   FHead := @FData[0];
@@ -241,7 +241,7 @@ begin
   FTotalSize := ASrc.FTotalSize;
   SetLength(FDims, System.Length(ASrc.FDims));
   TArray.Copy<TDimension>(ASrc.FDims, FDims, System.Length(ASrc.FDims));
-  
+
   // ToVectorを呼び出してデータをコピー
   FData := ASrc.ToVector;
   FHead := @FData[0];
@@ -303,7 +303,7 @@ procedure TFlexArray<T>.CheckDimension(ExpectedDim: Integer);
 var
   ActualDim: Integer;
 begin
-  ActualDim := System.Length(FDims);
+  ActualDim := Self.DimensionCount;
   if ActualDim <> ExpectedDim then
     raise Exception.CreateFmt(
       '次元エラー: %d次元配列専用の操作ですが、現在は %d次元です。',
@@ -323,9 +323,9 @@ var
   Shapes: TArray<Integer>;
 begin
   // 現在の形状を取得
-  SetLength(Shapes, System.Length(FDims));
-  for i := 0 to System.High(FDims) do
-    Shapes[i] := FDims[i].Len;
+  SetLength(Shapes, Self.DimensionCount);
+  for i := 1 to Self.DimensionCount do
+    Shapes[i - 1] := Self.FDims[i].Len; // FDimsは1ベース
   
   // Reshapeを呼び出し（要素数チェックは不要）
   Reshape(Shapes, TargetBase);
@@ -341,15 +341,15 @@ function TFlexArray<T>.GetCompatibleBaseIndex(const Another: TFlexArray<T>): Int
 var
   i: Integer;
 begin
-  Result := Self.FDims[0].Low;
+  Result := Self.FDims[1].Low;
 
-  for i := 0 to System.High(Self.FDims) do
+  for i := 1 to Self.DimensionCount do
   begin
     if Self.FDims[i].Low <> Result then
       raise Exception.Create('GetCompatibleBaseIndex: 各配列のすべての次元で同じベースインデックスを使用する必要があります。混合ベースは未対応です。');
   end;
 
-  for i := 0 to System.High(Another.FDims) do
+  for i := 1 to Another.DimensionCount do
   begin
     if Another.FDims[i].Low <> Result then
       raise Exception.CreateFmt('GetCompatibleBaseIndex: 異なるベースインデックスの配列は結合できません。Self=%d, Another=%d', [Result, Another.FDims[i].Low]);
@@ -450,13 +450,13 @@ var
   i: Integer;
   TempIndex: NativeInt;
 begin
-  SetLength(Result, System.Length(FDims));
+  SetLength(Result, Self.DimensionCount);
   TempIndex := LinearIndex;
 
   // 末尾の次元から順に割っていく（GetOffsetの逆工程）
-  for i := System.High(FDims) downto System.Low(FDims) do
+  for i := Self.DimensionCount downto 1 do
   begin
-    Result[i] := (TempIndex mod FDims[i].Len) + FDims[i].Low;
+    Result[i-1] := (TempIndex mod FDims[i].Len) + FDims[i].Low; // FDimsは1ベース
     TempIndex := TempIndex div FDims[i].Len;
   end;
 end;
@@ -471,14 +471,15 @@ function TFlexArray<T>.GetOffset(const Indices: array of Integer): NativeInt;
 var
   i: Integer;
 begin
-  if System.Length(Indices) <> System.Length(FDims) then Exit(-1);
+  if System.Length(Indices) <> Self.DimensionCount then Exit(-1);
 
   // Result := FBaseOffset; // 0 ではなく FBaseOffset から開始
   Result := 0;
-  for i := 0 to system.High(FDims) do
+  for i := 1 to Self.DimensionCount do
   begin
-    if (FDims[i].Low <= Indices[i]) and (Indices[i] <= FDims[i].High) then
-      Result := Result + (NativeInt(Indices[i]) - FDims[i].Low) * FDims[i].Stride
+    // FDimsは1ベース
+    if (FDims[i].Low <= Indices[i-1]) and (Indices[i-1] <= FDims[i].High) then
+      Result := Result + (NativeInt(Indices[i-1]) - FDims[i].Low) * FDims[i].Stride
     else
       Exit(-1);
   end;
@@ -571,7 +572,7 @@ var
   Rows: TArray<string>;
   r, i: Integer;
 begin
-  case System.Length(FDims) of
+  case Self.DimensionCount of
     1: // --- 1次元（Vector）の場合 ---
       begin
         SetLength(Rows, High - Low + 1);
@@ -607,7 +608,7 @@ begin
       end;
     else
       // --- 4次元以上の場合 ---
-      Result := Format('%d次元配列です', [System.Length(FDims)]);
+      Result := Format('%d次元配列です', [Self.DimensionCount]);
   end;
 end;
 
@@ -632,9 +633,10 @@ var
   i: Integer;
   Parts: TArray<string>;
 begin
-  SetLength(Parts, Length(FDims));
-  for i := 0 to system.High(FDims) do
-    Parts[i] := Format('%d..%d', [FDims[i].Low, FDims[i].High]);
+  SetLength(Parts, Self.DimensionCount);
+  for i := 1 to Self.DimensionCount do
+    // FDimsは1ベース
+    Parts[i - 1] := Format('%d..%d', [FDims[i].Low, FDims[i].High]);
   
   Result := '[' + String.Join(', ', Parts) + ']';
 end;
@@ -723,7 +725,7 @@ function TFlexArray<T>.Low: Integer;
 begin
   if System.Length(FDims) <> 1 then
     raise Exception.Create('多次元配列です。次元を明示してください（例: Low(1)）。');
-  Result := FDims[0].Low;
+  Result := FDims[1].Low;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -735,7 +737,7 @@ function TFlexArray<T>.High: Integer;
 begin
   if System.Length(FDims) <> 1 then
     raise Exception.Create('多次元配列です。次元を明示してください（例: High(1)）。');
-  Result := FDims[0].High;
+  Result := FDims[1].High;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -745,7 +747,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.Low(Dim: Integer): Integer; 
 begin 
-  Result := FDims[Dim - 1].Low; 
+  Result := FDims[Dim].Low; 
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -755,7 +757,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.High(Dim: Integer): Integer; 
 begin 
-  Result := FDims[Dim - 1].High; 
+  Result := FDims[Dim].High; 
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -765,7 +767,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.GetDimensionCount: Integer;
 begin
-  Result := System.Length(FDims);
+  Result := System.Length(FDims) - 1; // FDims[0]は未使用
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -871,9 +873,9 @@ procedure TFlexArray<T>.InitializeCoords(var Coords: TArray<Integer>);
 var
   i: Integer;
 begin
-  SetLength(Coords, System.Length(FDims));
-  for i := 0 to System.High(FDims) do
-    Coords[i] := FDims[i].Low;
+  SetLength(Coords, Self.DimensionCount);
+  for i := 0 to Self.DimensionCount - 1 do
+    Coords[i] := Self.FDims[i + 1].Low;  // FDimsは1ベース
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -919,6 +921,7 @@ var
   SelfSizeAlongDim: Integer;
   i, d: Integer;
 begin
+
   // 1-based to 0-based
   DimIdx := TargetDim - 1;
 
