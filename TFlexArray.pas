@@ -903,64 +903,38 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.VStack(const Another: TFlexArray<T>): TFlexArray<T>;
 var
-  SelfExpanded, AnotherExpanded: TFlexArray<T>;
+  SelfReady, AnotherReady: TFlexArray<T>;
 begin
-  // 例: [1,2,3] + [4,5,6] → [[1,2,3],[4,5,6]] (2x3)
-  // 注意: [1,2,3]は[[1,2,3]]に、[4,5,6]は[[4,5,6]]に変換してから2次元同士で結合
-  if (Self.DimensionCount = 1) and (Another.DimensionCount = 1) then
+  // 次元数のチェック（1次元と2次元のみ対応）
+  if not ((Self.DimensionCount in [1, 2]) and (Another.DimensionCount in [1, 2])) then
+    raise Exception.Create('VStack: 1次元または2次元配列のみ対応しています');
+
+  if Self.DimensionCount = 1 then
   begin
     // [1,2,3] → [[1,2,3]] (行ベクトル)
-    SelfExpanded := TFlexArray<T>.ViewFromArray(TArray<T>(Self.FHead), 1);
-    SelfExpanded.Reshape([1, Self.FDims[0].Len], 1);
+    SelfReady := TFlexArray<T>.ViewFromArray(TArray<T>(Self.FHead), 1);
+    SelfReady.Reshape([1, Self.FDims[0].Len], 1);
+  end
+  else
+    SelfReady := Self;
+
+  if Another.DimensionCount = 1 then
+  begin
     // [4,5,6] → [[4,5,6]] (行ベクトル)
-    AnotherExpanded := TFlexArray<T>.ViewFromArray(TArray<T>(Another.FHead), 1);
-    AnotherExpanded.Reshape([1, Another.FDims[0].Len], 1);
-    Result := SelfExpanded.Concat(AnotherExpanded, 1);
-    Exit;
-  end;
+    AnotherReady := TFlexArray<T>.ViewFromArray(TArray<T>(Another.FHead), 1);
+    AnotherReady.Reshape([1, Another.FDims[0].Len], 1);
+  end
+  else
+    AnotherReady := Another;
 
-  // 例: [1,2] + [[3,4],[5,6]] → [[1,2],[3,4],[5,6]] (3x2)
-  // 注意: [1,2]は[[1,2]]に変換され、[[3,4],[5,6]]の上に結合
-  if (Self.DimensionCount = 1) and (Another.DimensionCount = 2) then
-  begin
-    // [1,2] → [[1,2]] (行ベクトル)
-    SelfExpanded := TFlexArray<T>.ViewFromArray(TArray<T>(Self.FHead), 1);
-    SelfExpanded.Reshape([1, Self.FDims[0].Len], 1);
-    // 結合可能性チェック
-    if SelfExpanded.FDims[1].Len <> Another.FDims[1].Len then
-      raise Exception.CreateFmt('VStack: 列数が一致しません。Self=%d, Another=%d', 
-        [SelfExpanded.FDims[1].Len, Another.FDims[1].Len]);
-    Result := SelfExpanded.Concat(Another, 1);
-    Exit;
-  end;
+  // 結合可能性チェック
+  if SelfReady.FDims[1].Len <> AnotherReady.FDims[1].Len then
+    raise Exception.CreateFmt('VStack: 列数が一致しません。Self=%d, Another=%d', 
+      [SelfReady.FDims[1].Len, AnotherReady.FDims[1].Len]);
 
-  // 例: [[1,2],[3,4]] + [5,6] → [[1,2],[3,4],[5,6]] (3x2)
-  // 注意: [5,6]は[[5,6]]に変換され、[[1,2],[3,4]]の下に結合
-  if (Self.DimensionCount = 2) and (Another.DimensionCount = 1) then
-  begin
-    // [5,6] → [[5,6]] (行ベクトル)
-    AnotherExpanded := TFlexArray<T>.ViewFromArray(TArray<T>(Another.FHead), 1);
-    AnotherExpanded.Reshape([1, Another.FDims[0].Len], 1);
-    // 結合可能性チェック
-    if Self.FDims[1].Len <> AnotherExpanded.FDims[1].Len then
-      raise Exception.CreateFmt('VStack: 列数が一致しません。Self=%d, Another=%d', 
-        [Self.FDims[1].Len, AnotherExpanded.FDims[1].Len]);
-    Result := Self.Concat(AnotherExpanded, 1);
-    Exit;
-  end;
-
-  // 例: [[1,2],[3,4]] + [[5,6],[7,8]] → [[1,2],[3,4],[5,6],[7,8]] (4x2)
-  if (Self.DimensionCount = 2) and (Another.DimensionCount = 2) then
-  begin
-    // 結合可能性チェック: 列数が一致するか
-    if Self.FDims[1].Len <> Another.FDims[1].Len then
-      raise Exception.CreateFmt('VStack: 列数が一致しません。Self=%d, Another=%d', 
-        [Self.FDims[1].Len, Another.FDims[1].Len]);
-    Result := Self.Concat(Another, 1);
-    Exit;
-  end;
+  // 2次元同士で結合
+  Result := SelfReady.Concat(AnotherReady, 1);
 end;
-
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 2次元配列専用の水平方向結合
@@ -969,69 +943,39 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.HStack(const Another: TFlexArray<T>): TFlexArray<T>;
 var
-  SelfExpanded, AnotherExpanded: TFlexArray<T>;
+  SelfReady, AnotherReady: TFlexArray<T>;
 begin
-  // 例: [1,2,3] + [4,5,6] → [[1,4],[2,5],[3,6]] (3x2)
-  // 注意: [1,2,3]は[[1],[2],[3]]に、[4,5,6]は[[4],[5],[6]]に変換してから2次元同士で結合
-  if (Self.DimensionCount = 1) and (Another.DimensionCount = 1) then
+  // 次元数のチェック（1次元と2次元のみ対応）
+  if not ((Self.DimensionCount in [1, 2]) and (Another.DimensionCount in [1, 2])) then
+    raise Exception.Create('HStack: 1次元または2次元配列のみ対応しています');
+
+  // Selfの準備
+  if Self.DimensionCount = 1 then
   begin
-    // Selfを列ベクトルに変換: [1,2,3] → [[1],[2],[3]]
-    SelfExpanded := TFlexArray<T>.ViewFromArray(TArray<T>(Self.FHead), 1);
-    SelfExpanded.Reshape([Self.FDims[0].Len, 1], 1);
+    // [1,2,3] → [[1],[2],[3]] (列ベクトル)
+    SelfReady := TFlexArray<T>.ViewFromArray(TArray<T>(Self.FHead), 1);
+    SelfReady.Reshape([Self.FDims[0].Len, 1], 1);
+  end
+  else
+    SelfReady := Self;
     
-    // Anotherを列ベクトルに変換: [4,5,6] → [[4],[5],[6]]
-    AnotherExpanded := TFlexArray<T>.ViewFromArray(TArray<T>(Another.FHead), 1);
-    AnotherExpanded.Reshape([Another.FDims[0].Len, 1], 1);
+  // Anotherの準備
+  if Another.DimensionCount = 1 then
+  begin
+    // [4,5,6] → [[4],[5],[6]] (列ベクトル)
+    AnotherReady := TFlexArray<T>.ViewFromArray(TArray<T>(Another.FHead), 1);
+    AnotherReady.Reshape([Another.FDims[0].Len, 1], 1);
+  end
+  else
+    AnotherReady := Another;
     
-    Result := SelfExpanded.Concat(AnotherExpanded, 2);
-    Exit;
-  end;
-
-  // 例: [1,2] + [[3,4],[5,6]] → [[1,3,4],[2,5,6]] (2x3)
-  // 注意: [1,2]は[[1],[2]]（列ベクトル）に変換され、左側に結合される
-  if (Self.DimensionCount = 1) and (Another.DimensionCount = 2) then
-  begin
-    // Selfを列ベクトルに変換: [1,2] → [[1],[2]]
-    SelfExpanded := TFlexArray<T>.ViewFromArray(TArray<T>(Self.FHead), 1);
-    SelfExpanded.Reshape([Self.FDims[0].Len, 1], 1);
-    // 結合可能性チェック: Selfの行数とAnotherの行数が一致するか
-    if SelfExpanded.FDims[0].Len <> Another.FDims[0].Len then
-      raise Exception.CreateFmt('HStack: 行数が一致しません。Self=%d, Another=%d', 
-        [SelfExpanded.FDims[0].Len, Another.FDims[0].Len]);
-    Result := SelfExpanded.Concat(Another, 2);
-    Exit;
-  end;
-
-  // 例: [[1,2],[3,4]] + [5,6] → [[1,2,5],[3,4,6]] (2x3)
-  // 注意: [5,6]は[[5],[6]]に変換され、[[1,2],[3,4]]の右側に結合
-  if (Self.DimensionCount = 2) and (Another.DimensionCount = 1) then
-  begin
-    // Anotherを列ベクトルに変換: [5,6] → [[5],[6]]
-    AnotherExpanded := TFlexArray<T>.ViewFromArray(TArray<T>(Another.FHead), 1);
-    AnotherExpanded.Reshape([Another.FDims[0].Len, 1], 1);
-    // 結合可能性チェック: Selfの行数とAnotherの行数が一致するか
-    if Self.FDims[0].Len <> AnotherExpanded.FDims[0].Len then
-      raise Exception.CreateFmt('HStack: 行数が一致しません。Self=%d, Another=%d', 
-        [Self.FDims[0].Len, AnotherExpanded.FDims[0].Len]);
-    // 2:1 2次元 + 1次元 → 次元統一して結合
-    Result := Self.Concat(AnotherExpanded, 2);
-    Exit;
-  end;
-
-  // 例: [[1,2],[3,4]] + [[5,6],[7,8]] → [[1,2,5,6],[3,4,7,8]] (2x4)
-  if (Self.DimensionCount = 2) and (Another.DimensionCount = 2) then
-  begin
-    // 結合可能性チェック: 行数が一致するか
-    if Self.FDims[0].Len <> Another.FDims[0].Len then
-      raise Exception.CreateFmt('HStack: 行数が一致しません。Self=%d, Another=%d', 
-        [Self.FDims[0].Len, Another.FDims[0].Len]);
-    Result := Self.Concat(Another, 2);
-    Exit;
-  end;
-
-  // その他の組み合わせは未サポート
-  raise Exception.CreateFmt('HStack: 未対応の次元の組み合わせです。Self=%d次元, Another=%d次元', 
-    [Self.DimensionCount, Another.DimensionCount]);
+  // 結合可能性チェック
+  if SelfReady.FDims[0].Len <> AnotherReady.FDims[0].Len then
+    raise Exception.CreateFmt('HStack: 行数が一致しません。Self=%d, Another=%d', 
+      [SelfReady.FDims[0].Len, AnotherReady.FDims[0].Len]);
+      
+  // 2次元同士で結合
+  Result := SelfReady.Concat(AnotherReady, 2);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
