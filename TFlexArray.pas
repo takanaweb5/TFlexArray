@@ -62,6 +62,8 @@ type
     procedure InitializeCoords(var Coords: TArray<Integer>);
     function GetElement(Index: NativeInt): T; inline;
     procedure SetElement(Index: NativeInt; const Value: T); inline;
+    function ConcatEqualDim(const Another: TFlexArray<T>; TargetDim: Integer): TFlexArray<T>;
+    function PromoteDimension(const Source: TFlexArray<T>; TargetDim: Integer): TFlexArray<T>;
 {$IFDEF FLEXARRAY_ENABLE_LEN}
     function Len(Dim: Integer): NativeInt;
 {$ENDIF}
@@ -103,8 +105,6 @@ type
     function ChooseCol(ColIndex: Integer): TFlexArray<T>;
 
     function Concat(const Another: TFlexArray<T>; TargetDim: Integer): TFlexArray<T>;
-    function ConcatEqualDim(const Another: TFlexArray<T>; TargetDim: Integer): TFlexArray<T>;
-    function PromoteDimension(const Source: TFlexArray<T>; TargetDim: Integer): TFlexArray<T>;
     function HStack(const Another: TFlexArray<T>): TFlexArray<T>;
     function VStack(const Another: TFlexArray<T>): TFlexArray<T>;
 
@@ -974,8 +974,17 @@ end;
 // [概要] 配列を1次元だけ昇格させる
 // [引数] 元の配列, 次元を追加する位置
 // [戻値] 1次元増えた配列
-// [使用例] PromoteDimension([1,2,3], 1) → [[1,2,3]] (1D→2D)
-//          PromoteDimension([1,2,3], 2) → [[1],[2],[3]] (1D→2D)
+// [使用例]
+// PromoteDimension([1,2,3], 1) → [[1,2,3]] (1D→2D)
+//    [1..3] (サイズ3) →  [1..1, 1..3] (1×3)
+// PromoteDimension([1,2,3], 2) → [[1],[2],[3]] (1D→2D)
+//    [1..3] (サイズ3) →  [1..3, 1..1] (3×1)
+// PromoteDimension([[1,2],[3,4]], 1) → [[[1,2],[3,4]]] (2D→3D)
+//    [1..2, 1..2] (2×2) →  [1..1, 1..2, 1..2] (1×2×2)
+// PromoteDimension([[1,2],[3,4]], 2) → [[[1,2]], [[3,4]]]
+//    [1..2, 1..2] (2×2) →  [1..2, 1..1, 1..2] (2×1×2)
+// PromoteDimension([[1,2],[3,4]], 3) → [[[1],[2]], [[3],[4]]]
+//    [1..2, 1..2] (2×2) →  [1..2, 1..2, 1..1] (2×2×1)
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.PromoteDimension(const Source: TFlexArray<T>; TargetDim: Integer): TFlexArray<T>;
 var
@@ -1017,6 +1026,17 @@ var
   DimDiff: Integer;
   BaseIndex: Integer;
 begin
+  // TargetDimの制約チェック
+  if (TargetDim < 1) or (TargetDim > Self.DimensionCount) then
+    raise Exception.CreateFmt('Concat: TargetDimは1から%dの範囲である必要があります', [Self.DimensionCount]);
+
+
+  // 次元数のチェック（Another - Self = [0, 1] のみ許可）
+  DimDiff := Self.DimensionCount - Another.DimensionCount;
+  if not (Self.DimensionCount - Another.DimensionCount in [0, 1]) then
+    raise Exception.CreateFmt('Concat: %d次元配列と%d次元配列は結合できません。AnotherはSelfと同次元か1次元少ない必要があります', 
+      [Self.DimensionCount, Another.DimensionCount]);
+
   // ベースインデックスのチェック（すべて一致しないと例外）と取得
   BaseIndex := Self.GetCompatibleBaseIndex(Another);
 
@@ -1030,17 +1050,8 @@ begin
     AnotherReady.NormalizeToBaseIndex(1);
   end;
 
-  // 次元数のチェック
-  DimDiff := Abs(SelfReady.DimensionCount - AnotherReady.DimensionCount);
-  if DimDiff > 1 then
-    raise Exception.Create('Concat: 次元数の差が2以上です。対応範囲外です。');
-
-  // SelfReadyの次元をAnotherReadyにあわせて拡張
-  if SelfReady.DimensionCount < AnotherReady.DimensionCount then
-    SelfReady := PromoteDimension(SelfReady, TargetDim);
-
   // AnotherReadyの次元をSelfReadyにあわせて拡張
-  if AnotherReady.DimensionCount < SelfReady.DimensionCount then
+  if DimDiff > 0 then
     AnotherReady := PromoteDimension(AnotherReady, TargetDim);
 
   // 同一次元結合を実行
@@ -1058,10 +1069,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.VStack(const Another: TFlexArray<T>): TFlexArray<T>;
 begin
-  // 次元数のチェック（1次元と2次元のみ対応）
-  if not ((Self.DimensionCount in [1, 2]) and (Another.DimensionCount in [1, 2])) then
-    raise Exception.Create('VStack: 1次元または2次元配列のみ対応しています');
-
+  CheckDimension(2);
   Result := Self.Concat(Another, 1);
 end;
 
@@ -1072,10 +1080,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.HStack(const Another: TFlexArray<T>): TFlexArray<T>;
 begin
-  // 次元数のチェック（1次元と2次元のみ対応）
-  if not ((Self.DimensionCount in [1, 2]) and (Another.DimensionCount in [1, 2])) then
-    raise Exception.Create('HStack: 1次元または2次元配列のみ対応しています');
-
+  CheckDimension(2);
   Result := Self.Concat(Another, 2);
 end;
 
