@@ -88,10 +88,11 @@ type
     property DimensionCount: Integer read GetDimensionCount;
 
     property TotalSize: NativeInt read FTotalSize;
-    procedure Reshape(const AShapes: array of Integer; ABaseIndex: Integer);
-    procedure ReshapeMatrix(ARows, ACols: Integer; ABaseIndex: Integer);
-    procedure ReshapeRange(const ARange: TArray<Integer>); overload; // 1D
-    procedure ReshapeRange(const ARanges: array of TArray<Integer>); overload; // nD
+    function Reshape(const AShapes: array of Integer; ABaseIndex: Integer): TFlexArray<T>;
+    function ReshapeMatrix(ARows, ACols: Integer; ABaseIndex: Integer): TFlexArray<T>;
+    function ReshapeVector(ASize: Integer; ABaseIndex: Integer): TFlexArray<T>;
+    function ReshapeRange(const ARange: TArray<Integer>): TFlexArray<T>; overload; // 1D
+    function ReshapeRange(const ARanges: array of TArray<Integer>): TFlexArray<T>; overload; // nD
 
     function ToVector(): TArray<T>;
     function ToString(): string;
@@ -291,7 +292,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 constructor TFlexArray<T>.CreateMatrix(ARows, ACols: Integer; ABaseIndex: Integer);
 begin
-  TFlexArray<T>.Create([ARows, ACols], ABaseIndex);
+  self := TFlexArray<T>.Create([ARows, ACols], ABaseIndex);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -423,7 +424,7 @@ begin
     d := 0; // DestCoords用のインデックス(元の次元数より１つ少ない)
 
     // 元の次元数分ループ
-    for j := 0 to System.High(FDims) do
+    for j := 0 to System.High(FDims) - 1 do
     begin
       if (j + 1) = Dim then
         SrcCoords[j] := Index // 指定された次元は固定値
@@ -723,7 +724,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.Low: Integer;
 begin
-  if System.Length(FDims) <> 1 then
+  if Self.DimensionCount <> 1 then
     raise Exception.Create('多次元配列です。次元を明示してください（例: Low(1)）。');
   Result := FDims[1].Low;
 end;
@@ -735,7 +736,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.High: Integer;
 begin
-  if System.Length(FDims) <> 1 then
+  if Self.DimensionCount <> 1 then
     raise Exception.Create('多次元配列です。次元を明示してください（例: High(1)）。');
   Result := FDims[1].High;
 end;
@@ -1114,7 +1115,7 @@ end;
 // [使用例] Matrix.Reshape([3, 2], 1)  // 1始まりの3x2行列に再定義
 // [備考] 変更前後の全要素数が一致する必要あり
 //////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.Reshape(const AShapes: array of Integer; ABaseIndex: Integer);
+function TFlexArray<T>.Reshape(const AShapes: array of Integer; ABaseIndex: Integer): TFlexArray<T>;
 var
   i: Integer;
   NewTotalSize: NativeInt;
@@ -1124,30 +1125,43 @@ begin
   NewTotalSize := 1;
   for i := 0 to System.High(AShapes) do
     NewTotalSize := NewTotalSize * AShapes[i];
-  
+
   // 2. 要素数チェック
   if NewTotalSize <> FTotalSize then
     raise Exception.Create(Format(
       'Reshape: 要素数が一致しません。現在=%d, 新規=%d', [FTotalSize, NewTotalSize]));
-  
+
   // 3. 新しい範囲配列を生成
   SetLength(NewRanges, System.Length(AShapes));
   for i := 0 to System.High(AShapes) do
     NewRanges[i] := [ABaseIndex, ABaseIndex + AShapes[i] - 1];
-  
+
   // 4. 次元情報のみ更新（データは保持）
   InternalSetup(NewRanges);
+
+  Result := Self;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 行列形状に再定義（2次元専用）
 // [引数] 行数, 列数, 開始インデックス
-// [戻値] なし
+// [戻値] 再定義された配列
 // [使用例] Matrix.ReshapeMatrix(3, 4, 1)  // 1始まりの3x4行列に再定義
 //////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.ReshapeMatrix(ARows, ACols: Integer; ABaseIndex: Integer);
+function TFlexArray<T>.ReshapeMatrix(ARows, ACols: Integer; ABaseIndex: Integer): TFlexArray<T>;
 begin
-  Reshape([ARows, ACols], ABaseIndex);
+  Result := Reshape([ARows, ACols], ABaseIndex);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] ベクトル形状に再定義（1次元専用）
+// [引数] サイズ, 開始インデックス
+// [戻値] 再定義された配列
+// [使用例] Vector.ReshapeVector(6, 1)  // 1始まりの6要素ベクトルに再定義
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.ReshapeVector(ASize: Integer; ABaseIndex: Integer): TFlexArray<T>;
+begin
+  Result := Reshape([ASize], ABaseIndex);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1156,20 +1170,21 @@ end;
 // [戻値] なし
 // [使用例] Vector.ReshapeRange([-5, 5])  // -5から5までの範囲に再定義
 //////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.ReshapeRange(const ARange: TArray<Integer>);
+function TFlexArray<T>.ReshapeRange(const ARange: TArray<Integer>): TFlexArray<T>;
 var
   NewTotalSize: NativeInt;
 begin
   // 1. 新しい範囲の全要素数を計算
   NewTotalSize := ARange[1] - ARange[0] + 1;
-  
+
   // 2. 要素数チェック
   if NewTotalSize <> FTotalSize then
     raise Exception.Create(Format(
       'ReshapeRange: 要素数が一致しません。現在=%d, 新規=%d', [FTotalSize, NewTotalSize]));
-  
+
   // 3. 次元情報のみ更新（データは保持）
   InternalSetup([ARange]);
+  Result := Self;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1178,7 +1193,7 @@ end;
 // [戻値] なし
 // [使用例] Tensor.ReshapeRange([[1, 3], [1, 2]])  // 3x2行列に再定義
 //////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.ReshapeRange(const ARanges: array of TArray<Integer>);
+function TFlexArray<T>.ReshapeRange(const ARanges: array of TArray<Integer>): TFlexArray<T>;
 var
   i: Integer;
   NewTotalSize: NativeInt;
@@ -1187,14 +1202,15 @@ begin
   NewTotalSize := 1;
   for i := 0 to System.High(ARanges) do
     NewTotalSize := NewTotalSize * (ARanges[i][1] - ARanges[i][0] + 1);
-  
+
   // 2. 要素数チェック
   if NewTotalSize <> FTotalSize then
     raise Exception.Create(Format(
       'ReshapeRange: 要素数が一致しません。現在=%d, 新規=%d', [FTotalSize, NewTotalSize]));
-  
+
   // 3. 次元情報のみ更新（データは保持）
   InternalSetup(ARanges);
+  Result := Self;
 end;
 
 end.
