@@ -7,11 +7,32 @@ uses
   System.Rtti,    // TValue のため
   System.TypInfo; // tkString などの型判定（TValue.Kind）のため
 
-// Map/Mapped callback types
+// Range types
 type
-  TMapFunc<T, R> = reference to function(const Value: T; const Coords: TArray<Integer> = nil): R;
+  TFlexRange = TArray<Integer>;  // [Low, High] のペア
+  TFlexRanges = TArray<TFlexRange>;  // [[Low1, High1], [Low2, High2], ...]
+  TCoords = TArray<Integer>;  // 座標配列 [x, y, z, ...]
+  TFlexRangeHelper = record helper for TFlexRange
+  private
+    function GetLow: Integer; inline;
+    procedure SetLow(Value: Integer); inline;
+    function GetHigh: Integer; inline;
+    procedure SetHigh(Value: Integer); inline;
+  public
+    property Low: Integer read GetLow write SetLow;
+    property High: Integer read GetHigh write SetHigh;
+    function Length: Integer; inline;
+  end;
+  TFlexRangesHelper = record helper for TFlexRanges
+    class function Create(const ARanges: array of TFlexRange): TFlexRanges; static;
+    function Count: Integer; inline;
+    function TotalSize: NativeInt; inline;
+  public
+  end;
+
+  TMapFunc<T, R> = reference to function(const Value: T; const Coords: TCoords = nil): R;
   TMapFuncValue<T, R> = reference to function(const Value: T): R;
-  TMapedFunc<T> = reference to function(const Value: T; const Coords: TArray<Integer> = nil): T;
+  TMapedFunc<T> = reference to function(const Value: T; const Coords: TCoords = nil): T;
   TMapedFuncValue<T> = reference to function(const Value: T): T;
 
 type
@@ -22,7 +43,20 @@ type
         Low, High, Stride: NativeInt;
         function Len: NativeInt; inline;
       end;
-    type
+
+      TFlexDimensions = TArray<TDimension>;
+      TFlexDimensionsHelper = record helper for TFlexDimensions
+      private
+        function GetDimension(Index: Integer): TDimension; inline;
+        procedure SetDimension(Index: Integer; const Value: TDimension); inline;
+      public
+        class function Create(Count: Integer): TFlexDimensions; static;
+        function Count: Integer; inline;
+        function TotalSize: NativeInt;
+        function ToString: string;
+        property Items[Index: Integer]: TDimension read GetDimension write SetDimension;
+      end;
+
       // 内部専用の列挙子。これなら制約エラーも出ず、ポインタを直接スキャンできる。
       TFlexEnumerator<T> = class
       private
@@ -53,26 +87,26 @@ type
     FData: TArray<T>;       // 実データ保持用
     // FBaseOffset: NativeInt; // Viewとしての論理的な開始位置
     FHead: Pointer;         // 物理先頭ポインタ
-    FDims: TArray<TDimension>;  // 次元情報（1ベース、0番目は未使用）
+    FDims: TFlexDimensions;  // 次元情報（1ベース、0番目は未使用）
     FTotalSize: NativeInt; // 全要素数
 
-    function GetCoords(LinearIndex: NativeInt): TArray<Integer>;
-    function GetOffset(const Indices: array of Integer): NativeInt;
-    function GetValue(const Indices: array of Integer): T;
-    procedure SetValue(const Indices: array of Integer; const Value: T);
-    function InternalSetup(const Ranges: array of TArray<Integer>): NativeInt;
+    function GetCoords(LinearIndex: NativeInt): TCoords;
+    function GetOffset(const Coords: TCoords): NativeInt;
+    function GetValue(const Coords: TCoords): T;
+    procedure SetValue(const Coords: TCoords; const Value: T);
+    function InternalSetup(const Ranges: TFlexRanges): NativeInt;
     function ValueToStr(const V: T): string;
     procedure CheckDimension(ExpectedDim: Integer);
     procedure NormalizeToBaseIndex(TargetBase: Integer);
     function GetCompatibleBaseIndex(const Another: TFlexArray<T>): Integer;
-    procedure IncCoords(var CurrentCoords: TArray<Integer>;
-      const Ranges: array of TArray<Integer>);
-    procedure InitializeCoords(var Coords: TArray<Integer>);
+    procedure IncCoords(var CurrentCoords: TCoords;
+      const Ranges: TFlexRanges);
+    procedure InitializeCoords(var Coords: TCoords);
     function GetElement(Index: NativeInt): T; inline;
     procedure SetElement(Index: NativeInt; const Value: T); inline;
     function ConcatEqualDim(const Another: TFlexArray<T>; TargetDim: Integer): TFlexArray<T>;
     function PromoteDimension(const Source: TFlexArray<T>; TargetDim: Integer): TFlexArray<T>;
-    function GetRanges: TArray<TArray<Integer>>;
+    function GetRanges: TFlexRanges;
 {$IFDEF FLEXARRAY_ENABLE_LEN}
     function Len(Dim: Integer): NativeInt;
 {$ENDIF}
@@ -81,8 +115,8 @@ type
     constructor Create(const AShapes: array of Integer; ABaseIndex: Integer); overload;
     constructor Create(ASize: Integer; ABaseIndex: Integer); overload;
     constructor CreateMatrix(ARows, ACols: Integer; ABaseIndex: Integer); overload;
-    constructor CreateFromRange(const ARange: TArray<Integer>); overload;
-    constructor CreateFromRange(const ARanges: array of TArray<Integer>); overload;
+    constructor CreateFromRange(const ARange: TFlexRange); overload;
+    constructor CreateFromRange(const ARanges: TFlexRanges); overload;
     constructor CreateFromArray(const ASrc: TArray<T>; ABaseIndex: Integer); overload;
     constructor CreateFromFlexArray(const ASrc: TFlexArray<T>); overload;
     constructor ViewFromArray(const ASrc: TArray<T>; ABaseIndex: Integer); overload;
@@ -92,7 +126,7 @@ type
     function Low(Dim: Integer): Integer; overload;
     function High(Dim: Integer): Integer; overload;
     function GetDimensionCount: Integer; inline;
-    property Items[const Indices: array of Integer]: T read GetValue write SetValue; default;
+    property Items[const Coords: TCoords]: T read GetValue write SetValue; default;
     property Elements[Index: NativeInt]: T read GetElement write SetElement;
     property DimensionCount: Integer read GetDimensionCount;
 
@@ -100,8 +134,8 @@ type
     procedure Reshape(const AShapes: array of Integer; ABaseIndex: Integer);
     procedure ReshapeMatrix(ARows, ACols: Integer; ABaseIndex: Integer);
     procedure ReshapeVector(ABaseIndex: Integer = 1);
-    procedure ReshapeRange(const ARange: TArray<Integer>); overload; // 1D
-    procedure ReshapeRange(const ARanges: array of TArray<Integer>); overload; // nD
+    procedure ReshapeRange(const ARange: TFlexRange); overload; // 1D
+    procedure ReshapeRange(const ARanges: TFlexRanges); overload; // nD
 
     function ToVector(): TArray<T>;
     function ToString(): string;
@@ -128,7 +162,7 @@ type
     procedure Mapped(const AFunc: TMapedFunc<T>); overload;
     procedure Mapped(const AFunc: TMapedFuncValue<T>); overload;
   end;
-  
+
 implementation
 
 { TFlexArray<T> }
@@ -152,28 +186,28 @@ end;
 // [使用例] InternalSetup([[1, 10], [1, 10]])
 // [備考] 各次元の範囲配列は [Low, High] のペアになっていること
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.InternalSetup(const Ranges: array of TArray<Integer>): NativeInt;
+function TFlexArray<T>.InternalSetup(const Ranges: TFlexRanges): NativeInt;
 var
   i: Integer;
   CurrentStride: NativeInt;
   L, H: Integer;
 begin
-  SetLength(FDims, System.Length(Ranges) + 1);  // +1して0インデックスを未使用に
+  SetLength(FDims, Ranges.Count + 1);  // +1して0インデックスを未使用に
   CurrentStride := 1;
 
   // 後ろの次元から歩幅を計算することで多次元に対応
-  for i := system.High(Ranges) downto 0 do
+  for i := Ranges.Count - 1 downto 0 do
   begin
     // 引数の配列が [Low, High] のペアになっているか念のためチェック
-    Assert(System.Length(Ranges[i]) = 2,
+    Assert(Ranges[i].Length = 2,
       Format('TFlexArray: 第 %d 次元の指定が [Low, High] のペアではありません。', [i + 1]));
 
-    L := Ranges[i][0];
-    H := Ranges[i][1];
+    L := Ranges[i].Low;
+    H := Ranges[i].High;
 
     // ★ ここで開始 > 終了をチェック
-    Assert(L <= H,
-      Format('TFlexArray: 第 %d 次元の範囲が不正です (Low:%d > High:%d)', [i + 1, L, H]));
+    Assert(L < H,
+      Format('TFlexArray: 第 %d 次元の範囲が不正です (Low:%d >= High:%d)', [i + 1, L, H]));
 
     FDims[i + 1].Low    := L;    // 1ベースで格納
     FDims[i + 1].High   := H;
@@ -195,11 +229,14 @@ end;
 constructor TFlexArray<T>.Create(const AShapes: array of Integer; ABaseIndex: Integer);
 var
   i: Integer;
-  Ranges: array of TArray<Integer>;
+  Ranges: TFlexRanges;
 begin
   SetLength(Ranges, System.Length(AShapes));
   for i := 0 to System.High(AShapes) do
-    Ranges[i] := [ABaseIndex, ABaseIndex + AShapes[i] - 1];
+  begin
+    Ranges[i].Low := ABaseIndex;
+    Ranges[i].High := ABaseIndex + AShapes[i] - 1;
+  end;
 
   FTotalSize := InternalSetup(Ranges);
   SetLength(FData, FTotalSize);
@@ -223,7 +260,7 @@ end;
 // [戻値] なし
 // [使用例] TFlexArray<Integer>.CreateFromRange([-5, 5])  // -5から5までの11要素
 //////////////////////////////////////////////////////////////////////////////////////
-constructor TFlexArray<T>.CreateFromRange(const ARange: TArray<Integer>);
+constructor TFlexArray<T>.CreateFromRange(const ARange: TFlexRange);
 begin
   CreateFromRange([ARange]);
 end;
@@ -235,7 +272,7 @@ end;
 // [使用例] TFlexArray<Integer>.CreateFromRange([[1, 3], [1, 2]])  // 3x2行列
 //          静的配列の宣言例に相当 array[1..3, 1..2] of Integer;
 //////////////////////////////////////////////////////////////////////////////////////
-constructor TFlexArray<T>.CreateFromRange(const ARanges: array of TArray<Integer>);
+constructor TFlexArray<T>.CreateFromRange(const ARanges: TFlexRanges);
 begin
   FTotalSize := InternalSetup(ARanges);
 
@@ -252,8 +289,8 @@ constructor TFlexArray<T>.CreateFromFlexArray(const ASrc: TFlexArray<T>);
 begin
   // 構造情報をコピー
   FTotalSize := ASrc.FTotalSize;
-  SetLength(FDims, System.Length(ASrc.FDims));
-  TArray.Copy<TDimension>(ASrc.FDims, FDims, System.Length(ASrc.FDims));
+  SetLength(FDims, ASrc.FDims.Count);
+  TArray.Copy<TDimension>(ASrc.FDims, FDims, ASrc.FDims.Count);
 
   // ToVectorを呼び出してデータをコピー
   FData := ASrc.ToVector;
@@ -268,11 +305,11 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 constructor TFlexArray<T>.CreateFromArray(const ASrc: TArray<T>; ABaseIndex: Integer);
 var
-  Ranges: array of TArray<Integer>;
+  Range: TFlexRange;
 begin
-  SetLength(Ranges, 1);
-  Ranges[0] := [ABaseIndex, ABaseIndex + System.Length(ASrc) - 1];
-  FTotalSize := InternalSetup(Ranges);
+  Range.Low := ABaseIndex;
+  Range.High := ABaseIndex + System.Length(ASrc) - 1;
+  FTotalSize := InternalSetup([Range]);
 
   // データをコピーして実体化
   SetLength(FData, FTotalSize);
@@ -288,11 +325,11 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 constructor TFlexArray<T>.ViewFromArray(const ASrc: TArray<T>; ABaseIndex: Integer);
 var
-  Ranges: array of TArray<Integer>;
+  Range: TFlexRange;
 begin
-  SetLength(Ranges, 1);
-  Ranges[0] := [ABaseIndex, ABaseIndex + System.Length(ASrc) - 1];
-  FTotalSize := InternalSetup(Ranges);
+  Range.Low := ABaseIndex;
+  Range.High := ABaseIndex + System.Length(ASrc) - 1;
+  FTotalSize := InternalSetup([Range]);
   FHead := Pointer(ASrc);
 end;
 
@@ -338,7 +375,7 @@ begin
   // 現在の形状を取得
   SetLength(Shapes, Self.DimensionCount);
   for i := 1 to Self.DimensionCount do
-    Shapes[i - 1] := Self.FDims[i].Len; // FDimsは1ベース
+    Shapes[i - 1] := Self.FDims.Items[i].Len; // FDimsは1ベース
   
   // Reshapeを呼び出し（要素数チェックは不要）
   Reshape(Shapes, TargetBase);
@@ -354,18 +391,18 @@ function TFlexArray<T>.GetCompatibleBaseIndex(const Another: TFlexArray<T>): Int
 var
   i: Integer;
 begin
-  Result := Self.FDims[1].Low;
+  Result := Self.FDims.Items[1].Low;
 
   for i := 1 to Self.DimensionCount do
   begin
-    if Self.FDims[i].Low <> Result then
+    if Self.FDims.Items[i].Low <> Result then
       raise Exception.Create('GetCompatibleBaseIndex: 各配列のすべての次元で同じベースインデックスを使用する必要があります。混合ベースは未対応です。');
   end;
 
   for i := 1 to Another.DimensionCount do
   begin
-    if Another.FDims[i].Low <> Result then
-      raise Exception.CreateFmt('GetCompatibleBaseIndex: 異なるベースインデックスの配列は結合できません。Self=%d, Another=%d', [Result, Another.FDims[i].Low]);
+    if Another.FDims.Items[i].Low <> Result then
+      raise Exception.CreateFmt('GetCompatibleBaseIndex: 異なるベースインデックスの配列は結合できません。Self=%d, Another=%d', [Result, Another.FDims.Items[i].Low]);
   end;
 end;
 
@@ -399,7 +436,7 @@ end;
 function TFlexArray<T>.ChooseSlice(Index: Integer): T;
 begin
   CheckDimension(1);
-  Result := Self[Index]
+  Result := Self[[Index]]
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -410,8 +447,8 @@ end;
 function TFlexArray<T>.ChooseSlice(Dim: Integer; Index: Integer): TFlexArray<T>;
 var
   i, j, d: Integer;
-  NewRanges: array of TArray<Integer>;
-  DestCoords, SrcCoords: TArray<Integer>;
+  NewRanges: TFlexRanges;
+  DestCoords, SrcCoords: TCoords;
 begin
   // NewRangesの計算（指定次元を除外）
   // 3次元配列 [1..3, 1..4, 1..5] から Dim=2 のスライスを取る場合
@@ -458,7 +495,7 @@ end;
 // [戻値] 各次元の座標配列（GetOffsetの逆の変換を行う）
 // [例] [[1, 3], [1, 2]] のとき GetCoords(0)=[1,1], GetCoords(1)=[1,2], GetCoords(2)=[2,1]
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.GetCoords(LinearIndex: NativeInt): TArray<Integer>;
+function TFlexArray<T>.GetCoords(LinearIndex: NativeInt): TCoords;
 var
   i: Integer;
   TempIndex: NativeInt;
@@ -469,8 +506,8 @@ begin
   // 末尾の次元から順に割っていく（GetOffsetの逆工程）
   for i := Self.DimensionCount downto 1 do
   begin
-    Result[i-1] := (TempIndex mod FDims[i].Len) + FDims[i].Low; // FDimsは1ベース
-    TempIndex := TempIndex div FDims[i].Len;
+    Result[i-1] := (TempIndex mod FDims.Items[i].Len) + FDims.Items[i].Low; // FDimsは1ベース
+    TempIndex := TempIndex div FDims.Items[i].Len;
   end;
 end;
 
@@ -480,19 +517,19 @@ end;
 // [戻値] 線形インデックス（範囲外の場合は-1）
 // [例] [[1, 3], [1, 2]] のとき GetOffset([1,1])=0, GetOffset([1,2])=1, GetOffset([2,1])=2
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.GetOffset(const Indices: array of Integer): NativeInt;
+function TFlexArray<T>.GetOffset(const Coords: TCoords): NativeInt;
 var
   i: Integer;
 begin
-  if System.Length(Indices) <> Self.DimensionCount then Exit(-1);
+  if System.Length(Coords) <> Self.DimensionCount then Exit(-1);
 
   // Result := FBaseOffset; // 0 ではなく FBaseOffset から開始
   Result := 0;
   for i := 1 to Self.DimensionCount do
   begin
     // FDimsは1ベース
-    if (FDims[i].Low <= Indices[i-1]) and (Indices[i-1] <= FDims[i].High) then
-      Result := Result + (NativeInt(Indices[i-1]) - FDims[i].Low) * FDims[i].Stride
+    if (FDims.Items[i].Low <= Coords[i-1]) and (Coords[i-1] <= FDims.Items[i].High) then
+      Result := Result + (NativeInt(Coords[i-1]) - FDims.Items[i].Low) * FDims.Items[i].Stride
     else
       Exit(-1);
   end;
@@ -503,11 +540,11 @@ end;
 // [引数] 各次元の座標配列
 // [戻値] 座標に対応する値（範囲外の場合は既定値）
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.GetValue(const Indices: array of Integer): T;
+function TFlexArray<T>.GetValue(const Coords: TCoords): T;
 var
   Offset: NativeInt;
 begin
-  Offset := GetOffset(Indices);
+  Offset := GetOffset(Coords);
   // 境界外なら初期値を返す
   if Offset = -1 then Exit(Default(T));
   Result := Self.Elements[Offset];
@@ -518,11 +555,11 @@ end;
 // [引数] 各次元の座標配列, 設定する値
 // [戻値] なし
 //////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.SetValue(const Indices: array of Integer; const Value: T);
+procedure TFlexArray<T>.SetValue(const Coords: TCoords; const Value: T);
 var
   Offset: NativeInt;
 begin
-  Offset := GetOffset(Indices);
+  Offset := GetOffset(Coords);
   // 境界外なら何もしない
   if Offset = -1 then Exit;
   Self.Elements[Offset] := Value;
@@ -592,7 +629,7 @@ begin
         i := 0;
         for r := Low to High do
         begin
-          Rows[i] := ValueToStr(Self[r]);
+          Rows[i] := ValueToStr(Self[[r]]);
           Inc(i);
         end;
         Exit('(' + String.Join(', ', Rows) + ')');
@@ -642,16 +679,8 @@ end;
 // [戻値] 範囲情報の文字列表現 例：[1990..1991, 1..12, 1..31]
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.ToRangesString(): string;
-var
-  i: Integer;
-  Parts: TArray<string>;
 begin
-  SetLength(Parts, Self.DimensionCount);
-  for i := 1 to Self.DimensionCount do
-    // FDimsは1ベース
-    Parts[i - 1] := Format('%d..%d', [FDims[i].Low, FDims[i].High]);
-  
-  Result := '[' + String.Join(', ', Parts) + ']';
+  Result := FDims.ToString;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -663,8 +692,8 @@ end;
 function TFlexArray<T>.Transpose(const NewDims: array of Integer): TFlexArray<T>;
 var
   i, d: Integer;
-  NewRanges: array of TArray<Integer>;
-  DestCoords, SrcCoords: TArray<Integer>;
+  NewRanges: TFlexRanges;
+  DestCoords, SrcCoords: TCoords;
   DimUsed: array of Boolean;
 begin
   // 整合性チェック
@@ -721,11 +750,11 @@ end;
 // [概要] 指定次元の配列サイズを返す
 // [引数] 次元番号
 // [戻値] 配列サイズ
-// [備考] 利用者向けAPI（封印中）です。内部実装では FDims[i].Len を使用してください。
+// [備考] 利用者向けAPI（封印中）です。内部実装では FDims.Items[Dim].Len を使用してください。
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.Len(Dim: Integer): NativeInt;
 begin
-  Result := FDims[Dim - 1].Len;
+  Result := FDims.Items[Dim].Len;
 end;
 {$ENDIF}
 
@@ -738,7 +767,7 @@ function TFlexArray<T>.Low: Integer;
 begin
   if System.Length(FDims) <> 1 then
     raise Exception.Create('多次元配列です。次元を明示してください（例: Low(1)）。');
-  Result := FDims[1].Low;
+  Result := FDims.Items[1].Low;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -750,7 +779,7 @@ function TFlexArray<T>.High: Integer;
 begin
   if System.Length(FDims) <> 1 then
     raise Exception.Create('多次元配列です。次元を明示してください（例: High(1)）。');
-  Result := FDims[1].High;
+  Result := FDims.Items[1].High;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -760,7 +789,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.Low(Dim: Integer): Integer; 
 begin 
-  Result := FDims[Dim].Low; 
+  Result := FDims.Items[Dim].Low; 
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -770,7 +799,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.High(Dim: Integer): Integer; 
 begin 
-  Result := FDims[Dim].High; 
+  Result := FDims.Items[Dim].High; 
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -882,13 +911,13 @@ end;
 // [引数] 初期化する座標配列
 // [戻値] なし
 //////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.InitializeCoords(var Coords: TArray<Integer>);
+procedure TFlexArray<T>.InitializeCoords(var Coords: TCoords);
 var
   i: Integer;
 begin
   SetLength(Coords, Self.DimensionCount);
   for i := 0 to Self.DimensionCount - 1 do
-    Coords[i] := Self.FDims[i + 1].Low;  // FDimsは1ベース
+    Coords[i] := Self.FDims.Items[i + 1].Low;  // FDimsは1ベース
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -896,7 +925,7 @@ end;
 // [引数] 現在の座標配列, 各次元の範囲配列
 // [戻値] なし
 //////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.IncCoords(var CurrentCoords: TArray<Integer>; const Ranges: array of TArray<Integer>);
+procedure TFlexArray<T>.IncCoords(var CurrentCoords: TCoords; const Ranges: TFlexRanges);
 var
   d: Integer;
 begin
@@ -929,8 +958,8 @@ end;
 function TFlexArray<T>.ConcatEqualDim(const Another: TFlexArray<T>; TargetDim: Integer): TFlexArray<T>;
 var
   DimIdx: Integer;
-  NewRanges: array of TArray<Integer>;
-  DestCoords: TArray<Integer>;
+  NewRanges: TFlexRanges;
+  DestCoords: TCoords;
   SelfSizeAlongDim: Integer;
   i, d: Integer;
 begin
@@ -944,9 +973,9 @@ begin
     if d <> DimIdx then
     begin
       // 結合しない次元はサイズが一致している必要がある
-      if Self.FDims[d].Len <> Another.FDims[d].Len then
+      if Self.FDims.Items[d].Len <> Another.FDims.Items[d].Len then
         raise Exception.CreateFmt('ConcatEqualDim: 次元%dのサイズが一致しません。Self=%d, Another=%d', 
-          [d+1, Self.FDims[d].Len, Another.FDims[d].Len]);
+          [d+1, Self.FDims.Items[d].Len, Another.FDims.Items[d].Len]);
     end;
   end;
 
@@ -954,13 +983,12 @@ begin
   SetLength(NewRanges, Self.DimensionCount);
   for d := 0 to Self.DimensionCount - 1 do
   begin
-    SetLength(NewRanges[d], 2); // [Low, High] の 2要素配列
-    NewRanges[d][0] := Self.FDims[d].Low; // LowBoundはSelfに合わせる
+    NewRanges[d] := [Self.FDims.Items[d].Low, Self.FDims.Items[d].High]; // 初期値
     if d = DimIdx then
       // 結合する次元だけ、自分と相手のサイズを足し合わせる
-      NewRanges[d][1] := Self.FDims[d].High + Another.FDims[d].Len
+      NewRanges[d][1] := Self.FDims.Items[d].High + Another.FDims.Items[d].Len
     else
-      NewRanges[d][1] := Self.FDims[d].High;
+      NewRanges[d][1] := Self.FDims.Items[d].High;
   end;
   Result := TFlexArray<T>.CreateFromRange(NewRanges);
 
@@ -973,7 +1001,7 @@ begin
   end;
 
   // Another のデータを埋める
-  SelfSizeAlongDim := Self.FDims[DimIdx].Len;
+  SelfSizeAlongDim := Self.FDims.Items[DimIdx].Len;
   for i := Self.FTotalSize to Result.FTotalSize - 1 do
   begin
     DestCoords[DimIdx] := DestCoords[DimIdx] - SelfSizeAlongDim;
@@ -1017,7 +1045,7 @@ begin
       NewShapes[i] := 1  // 挿入位置はサイズ1
     else
     begin
-      NewShapes[i] := Source.FDims[j].Len;
+      NewShapes[i] := Source.FDims.Items[j].Len;
       Inc(j);
     end;
   end;
@@ -1131,7 +1159,7 @@ procedure TFlexArray<T>.Reshape(const AShapes: array of Integer; ABaseIndex: Int
 var
   i: Integer;
   NewTotalSize: NativeInt;
-  NewRanges: array of TArray<Integer>;
+  NewRanges: TFlexRanges;
 begin
   // 1. 新しい形状の全要素数を計算
   NewTotalSize := 1;
@@ -1180,7 +1208,7 @@ end;
 // [戻値] なし
 // [使用例] Vector.ReshapeRange([-5, 5])  // -5から5までの範囲に再定義
 //////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.ReshapeRange(const ARange: TArray<Integer>);
+procedure TFlexArray<T>.ReshapeRange(const ARange: TFlexRange);
 var
   NewTotalSize: NativeInt;
 begin
@@ -1202,7 +1230,7 @@ end;
 // [戻値] なし
 // [使用例] Tensor.ReshapeRange([[1, 3], [1, 2]])  // 3x2行列に再定義
 //////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.ReshapeRange(const ARanges: array of TArray<Integer>);
+procedure TFlexArray<T>.ReshapeRange(const ARanges: TFlexRanges);
 var
   i: Integer;
   NewTotalSize: NativeInt;
@@ -1233,7 +1261,7 @@ end;
 function TFlexArray<T>.Map<R>(const AFunc: TMapFunc<T, R>): TFlexArray<R>;
 var
   i: Integer;
-  CurrentCoords: TArray<Integer>;
+  CurrentCoords: TCoords;
   Value: T;
 begin
   // Viewモードは例外
@@ -1263,7 +1291,7 @@ end;
 procedure TFlexArray<T>.Mapped(const AFunc: TMapedFunc<T>);
 var
   i: Integer;
-  CurrentCoords: TArray<Integer>;
+  CurrentCoords: TCoords;
 begin
   // Viewモードは例外
   if FData = nil then
@@ -1331,13 +1359,189 @@ end;
 // [引数] なし
 // [戻値] 各次元の範囲配列
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.GetRanges: TArray<TArray<Integer>>;
+function TFlexArray<T>.GetRanges: TFlexRanges;
 var
   i: Integer;
 begin
   SetLength(Result, Self.DimensionCount);
   for i := 1 to Self.DimensionCount do
     Result[i-1] := [FDims[i].Low, FDims[i].High];
+end;
+
+{ TFlexRangeHelper }
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] TFlexRangeの下限値を取得
+// [引数] なし
+// [戻値] 下限値
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexRangeHelper.GetLow: Integer;
+begin
+  Result := Self[0];
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] TFlexRangeの下限値を設定
+// [引数] 下限値
+// [戻値] なし
+//////////////////////////////////////////////////////////////////////////////////////
+procedure TFlexRangeHelper.SetLow(Value: Integer);
+begin
+  Self[0] := Value;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] TFlexRangeの上限値を取得
+// [引数] なし
+// [戻値] 上限値
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexRangeHelper.GetHigh: Integer;
+begin
+  Result := Self[1];
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] TFlexRangeの上限値を設定
+// [引数] 上限値
+// [戻値] なし
+//////////////////////////////////////////////////////////////////////////////////////
+procedure TFlexRangeHelper.SetHigh(Value: Integer);
+begin
+  Self[1] := Value;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] TFlexRangeの長さを取得
+// [引数] なし
+// [戻値] 長さ
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexRangeHelper.Length: Integer;
+begin
+  Result := High - Low + 1;
+end;
+
+{ TFlexRangesHelper }
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] TFlexRangesの静的コンストラクタ
+// [引数] 範囲配列 [[Low1, High1], [Low2, High2], ...]
+// [戻値] TFlexRanges
+// [使用例] Ranges := TFlexRanges.Create([[1, 3], [1, 2]])
+//////////////////////////////////////////////////////////////////////////////////////
+class function TFlexRangesHelper.Create(const ARanges: array of TFlexRange): TFlexRanges;
+var
+  i: Integer;
+begin
+  // 入力チェック
+  for i := 0 to High(ARanges) do
+  begin
+    if Length(ARanges[i]) <> 2 then
+      raise Exception.CreateFmt('TFlexRanges.Create: %d番目の範囲が[Low, High]の形式ではありません', [i]);
+    if ARanges[i][0] > ARanges[i][1] then
+      raise Exception.CreateFmt('TFlexRanges.Create: %d番目の範囲が無効です。Low(%d) > High(%d)', 
+        [i, ARanges[i][0], ARanges[i][1]]);
+  end;
+  
+  SetLength(Result, Length(ARanges));
+  for i := 0 to High(ARanges) do
+    Result[i] := ARanges[i];
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] TFlexRangesの次元数を取得
+// [引数] なし
+// [戻値] 次元数
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexRangesHelper.Count: Integer;
+begin
+  Result := Length(Self);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] TFlexRangesの全要素数を取得
+// [引数] なし
+// [戻値] 全要素数 (各次元のサイズの積)
+// [使用例] [[1, 3], [1, 2]] → 3 * 2 = 6
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexRangesHelper.TotalSize: NativeInt;
+var
+  i: Integer;
+begin
+  Result := 1;
+  for i := 0 to High(Self) do
+    Result := Result * Self[i].Length;
+end;
+
+{ TFlexDimensionsHelper }
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] TFlexDimensionsの次元数を取得
+// [引数] なし
+// [戻値] 次元数
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.TFlexDimensionsHelper.Count: Integer;
+begin
+  Result := Length(Self);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 指定次元の情報を取得（1-based）
+// [引数] 次元番号（1-based）
+// [戻値] 次元情報
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.TFlexDimensionsHelper.GetDimension(Index: Integer): TDimension;
+begin
+  Result := Self[Index - 1];  // 1ベース→0ベース変換
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 指定次元の情報を設定（1-based）
+// [引数] 次元番号（1-based）, 次元情報
+// [戻値] なし
+//////////////////////////////////////////////////////////////////////////////////////
+procedure TFlexArray<T>.TFlexDimensionsHelper.SetDimension(Index: Integer; const Value: TDimension);
+begin
+  Self[Index - 1] := Value;  // 1ベース→0ベース変換
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] TFlexDimensionsの全要素数を取得
+// [引数] なし
+// [戻値] 全要素数
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.TFlexDimensionsHelper.TotalSize: NativeInt;
+var
+  i: Integer;
+begin
+  Result := 1;
+  for i := 0 to Count - 1 do
+    Result := Result * Self[i].Len;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] TFlexDimensionsを文字列化
+// [引数] なし
+// [戻値] 次元情報の文字列表現  例：[1990..1991, 1..12, 1..31]
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.TFlexDimensionsHelper.ToString: string;
+var
+  i: Integer;
+  Parts: TArray<string>;
+begin
+  SetLength(Parts, Count);
+  for i := 0 to Count - 1 do
+    Parts[i] := Format('%d..%d', [Self[i].Low, Self[i].High]);
+  Result := '[' + String.Join(', ', Parts) + ']';
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 指定された次元数でTFlexDimensionsを作成
+// [引数] 次元数
+// [戻値] 新しいTFlexDimensions
+//////////////////////////////////////////////////////////////////////////////////////
+class function TFlexArray<T>.TFlexDimensionsHelper.Create(Count: Integer): TFlexDimensions;
+begin
+  SetLength(Result, Count);
 end;
 
 end.
