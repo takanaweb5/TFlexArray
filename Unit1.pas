@@ -4,7 +4,7 @@ interface
 
 uses
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
-  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls, TFlexArray;
+  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls, TFlexArray, DebugLog, System.DateUtils;
 
 type
   TForm1 = class(TForm)
@@ -32,10 +32,139 @@ type
 // --- テスト用サブ関数群 ---
 procedure Log(const S: string);
 begin
-  OutputDebugString(PChar(S));
+  OutputDebugLog(PChar(S));
   Form1.Memo1.Lines.Add(S);
 end;
 
+// 日付変換関数（Mapped用）
+function CreateValidDateFromCoords(const Value: TDateTime; const Coords: TArray<Integer>): TDateTime;
+var
+  Year, Month, Day: Integer;
+begin
+  Year := Coords[0];
+  Month := Coords[1];
+  Day := Coords[2];
+  
+  // 有効な日付かチェック
+  if IsValidDate(Year, Month, Day) then
+    Result := EncodeDate(Year, Month, Day)
+  else
+    Result := 0; // 無効な日付は0に
+end;
+
+function FormatDateToString(const Value: TDateTime;const  Coords: TArray<Integer> = nil): string;
+begin
+  if Value = 0 then
+    Result := '---' // 無効な日付
+  else
+    Result := FormatDateTime('yyyy/mm/dd', Value);
+end;
+
+// --- パフォーマンス比較テスト ---
+// --- パフォーマンス比較テスト（String版・ヘビー） ---
+procedure TestPerformance;
+var
+  A, B: TFlexArray<string>;
+  StartTime, EndTime: TDateTime;
+  i, j, k: Integer;
+  ReshapeTime, CopyTime: Integer;
+  TestString: string;
+begin
+  Log('[Test: Performance Comparison (String Heavy)]');
+
+  // ヘビーな文字列データを準備
+  TestString := 'This is a very long test string with heavy content to make the performance test more realistic and demanding. ' +
+                'It contains multiple sentences and should consume more memory per element. ' +
+                'The purpose is to create a significant difference between reference counting and actual copying operations. ' +
+                'Each element will hold substantial data to amplify the performance characteristics.';
+
+  // 大きな配列を準備（500x500 = 250,000要素）
+  A := TFlexArray<string>.CreateMatrix(100, 100, 1);
+  Log(Format('Created %dx%d matrix (%d elements)', [100, 100, A.TotalSize]));
+
+  // 全要素にヘビーな文字列を設定（インデックスも文字列で生成）
+  Log('Setting heavy string values...');
+  for i := A.Low(1) to A.High(1) do
+    for j := A.Low(2) to A.High(2) do
+      A[i, j] := Format('Element[%d,%d]', [i, j]);
+
+  Log('Data setup completed');
+
+  // Reshapeのパフォーマンス測定（参照カウントのみ）
+  StartTime := Now;
+  for i := 1 to 10 do
+  begin
+    A := A.ReshapeVector(100*100, 1);  // メソッドチェーン
+    log(A.ToString);
+  end;
+  EndTime := Now;
+  ReshapeTime := MilliSecondsBetween(EndTime, StartTime);
+  Log(Format('Reshape (ref-count only): %d ms for 5000 operations', [ReshapeTime]));
+
+  // CreateFromFlexArrayのパフォーマンス測定（実コピー）
+  StartTime := Now;
+  for i := 1 to 10 do  // 回数を大幅に減らす（重い処理のため）
+  begin
+    A := TFlexArray<string>.CreateFromFlexArray(A);
+    log(A.ToString);
+  end;
+  EndTime := Now;
+  CopyTime := MilliSecondsBetween(EndTime, StartTime);
+  Log(Format('CreateFromFlexArray (real copy): %d ms for 100 operations', [CopyTime]));
+
+  // 速度比較
+  if ReshapeTime > 0 then
+    Log(Format('Speed difference: %.1fx faster', [CopyTime * 50.0 / ReshapeTime]))
+  else
+    Log('Reshape was too fast to measure accurately');
+
+  // 実コピーの確認
+  B := TFlexArray<string>.CreateFromFlexArray(A);
+
+
+  // データ整合性確認
+  Log('Sample data check:');
+  Log(Format('A[1,1]: %s', [Copy(A[1,1], 1, 50) + '...']));
+  Log(Format('B[1,1]: %s', [Copy(B[1,1], 1, 50) + '...']));
+end;
+
+// --- Reshapeチェーン実験 ---
+procedure TestReshapeChain;
+var
+  A: TFlexArray<Integer>;
+begin
+  Log('[Test: Reshape Chain Experiment]');
+
+  // 2x3行列を作成
+  A := TFlexArray<Integer>.CreateMatrix(2, 3, 1);
+  A[1,1] := 1; A[1,2] := 2; A[1,3] := 3;
+  A[2,1] := 4; A[2,2] := 5; A[2,3] := 6;
+
+  Log('Original 2x3:');
+  Log(A.ToString);
+  Log(A.TotalSize.ToString);
+
+  // 現状のReshapeはprocedureなので戻り値なし
+  // 以下のコードはコンパイルエラーになるはず
+  try
+    Log('After reshape to 3x2:');
+    Log(A.Reshape([3, 2], 1).ToString);
+    Log(A.ToString);
+
+    // もう一度Reshape
+
+
+    Log('After reshape to 1x6:');
+    Log(A.ReshapeRange([1, 6]).ToString);
+    Log(A.ToString);
+
+  except
+    on E: Exception do
+      Log('Error: ' + E.Message);
+  end;
+
+  Log('Reshape chain test completed');
+end;
 
 // ① 新規生成のテスト
 procedure Test_New();
@@ -114,15 +243,79 @@ end;
 
 // --- Form のイベントハンドラ ---
 
+// Mapメソッドを使って日付を作成するテスト
+procedure TestMapDateCreation;
+var
+  DateArray: TFlexArray<TDateTime>;
+  DateStrings: TFlexArray<string>;
+  i, j, k: Integer;
+  TestDate: TDateTime;
+begin
+  Log('[Test: Map Date Creation]');
+  
+  // 3次元配列を作成: [年, 月, 日]
+  DateArray := TFlexArray<TDateTime>.CreateFromRange([[2000, 2001], [1, 12], [1, 31]]);
+  
+  // Mapを使って有効な日付のみを設定（2月30日などは無効）
+  DateArray.Mapped(function(const Value: TDateTime; const Coords: TArray<Integer>): TDateTime
+  var
+    Year, Month, Day: Integer;
+  begin
+    Year := Coords[0];
+    Month := Coords[1];
+    Day := Coords[2];
+    
+    // 有効な日付かチェック
+    if IsValidDate(Year, Month, Day) then
+      Result := EncodeDate(Year, Month, Day)
+    else
+      Result := 0; // 無効な日付は0に
+  end);
+  
+  // Mapを使って日付を文字列に変換
+  DateStrings := DateArray.Map<string>(function(const Value: TDateTime; const Coords: TArray<Integer> = nil): string
+  begin
+    if Value = 0 then
+      Result := '---' // 無効な日付
+    else
+      Result := FormatDateTime('yyyy/mm/dd', Value);
+  end);
+
+  Log('  --- 日付配列のサンプル ---');
+  // 2000年1月1日, 2000年2月29日（うるう年）, 2001年2月28日などを表示
+  Log(Format('  2000/01/01 = %s', [DateStrings[2000, 1, 1]]));
+  Log(Format('  2000/02/29 = %s', [DateStrings[2000, 2, 29]])); // うるう年
+  Log(Format('  2001/02/29 = %s', [DateStrings[2001, 2, 29]])); // 無効な日付
+  Log(Format('  2001/02/28 = %s', [DateStrings[2001, 2, 28]]));
+  
+  Log('  --- 統計情報 ---');
+  var ValidCount := 0;
+  var TotalCount := DateArray.TotalSize;
+  
+  for var DateStr in DateStrings do
+  begin
+    if DateStr <> '---' then
+      Inc(ValidCount);
+  end;
+  
+  Log(Format('  全要素数: %d', [TotalCount]));
+  Log(Format('  有効な日付数: %d', [ValidCount]));
+  Log(Format('  無効な日付数: %d', [TotalCount - ValidCount]));
+  Log('  --- テスト完了 ---');
+end;
+
 procedure TForm1.Button1Click(Sender: TObject);
 begin
   Memo1.Clear;
   Memo1.Lines.Add('--- TFlexArray 最終試運転 ---');
 
-  Test_New;        // 新規作成
-  Test_1D_Ref;    // 1次元参照
-  Test_3D_New;
-  Memo1.Lines.Add('--- テスト完了 ---');
+//  TestReshapeChain;
+//  TestPerformance;
+  TestMapDateCreation; // Map日付作成テスト
+//  Test_New;        // 新規作成
+//  Test_1D_Ref;    // 1次元参照
+//  Test_3D_New;
+//  Memo1.Lines.Add('--- テスト完了 ---');
 end;
 
 procedure TestUltimateChaosSlice;

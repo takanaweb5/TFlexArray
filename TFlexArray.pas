@@ -6,6 +6,14 @@ uses
   System.SysUtils, System.Generics.Collections, System.Math,
   System.Rtti,    // TValue のため
   System.TypInfo; // tkString などの型判定（TValue.Kind）のため
+
+// Map/Mapped callback types
+type
+  TMapFunc<T, R> = reference to function(const Value: T; const Coords: TArray<Integer> = nil): R;
+  TMapFuncValue<T, R> = reference to function(const Value: T): R;
+  TMapedFunc<T> = reference to function(const Value: T; const Coords: TArray<Integer> = nil): T;
+  TMapedFuncValue<T> = reference to function(const Value: T): T;
+
 type
   TFlexArray<T> = record
   private
@@ -64,6 +72,7 @@ type
     procedure SetElement(Index: NativeInt; const Value: T); inline;
     function ConcatEqualDim(const Another: TFlexArray<T>; TargetDim: Integer): TFlexArray<T>;
     function PromoteDimension(const Source: TFlexArray<T>; TargetDim: Integer): TFlexArray<T>;
+    function GetRanges: TArray<TArray<Integer>>;
 {$IFDEF FLEXARRAY_ENABLE_LEN}
     function Len(Dim: Integer): NativeInt;
 {$ENDIF}
@@ -88,11 +97,11 @@ type
     property DimensionCount: Integer read GetDimensionCount;
 
     property TotalSize: NativeInt read FTotalSize;
-    function Reshape(const AShapes: array of Integer; ABaseIndex: Integer): TFlexArray<T>;
-    function ReshapeMatrix(ARows, ACols: Integer; ABaseIndex: Integer): TFlexArray<T>;
-    function ReshapeVector(ASize: Integer; ABaseIndex: Integer): TFlexArray<T>;
-    function ReshapeRange(const ARange: TArray<Integer>): TFlexArray<T>; overload; // 1D
-    function ReshapeRange(const ARanges: array of TArray<Integer>): TFlexArray<T>; overload; // nD
+    procedure Reshape(const AShapes: array of Integer; ABaseIndex: Integer);
+    procedure ReshapeMatrix(ARows, ACols: Integer; ABaseIndex: Integer);
+    procedure ReshapeVector(ABaseIndex: Integer = 1);
+    procedure ReshapeRange(const ARange: TArray<Integer>); overload; // 1D
+    procedure ReshapeRange(const ARanges: array of TArray<Integer>); overload; // nD
 
     function ToVector(): TArray<T>;
     function ToString(): string;
@@ -113,10 +122,13 @@ type
     function AppendArray(const Another: TArray<T>): TFlexArray<T>; overload;
 
     function GetEnumerator: TFlexEnumerator<T>;
-    // function Each(): TFlexEnumerator<T>; overload;
-    // function Each(Dimension: Integer): TDimensionEnumerator<T>; overload;
-  end;
 
+    function Map<R>(const AFunc: TMapFunc<T, R>): TFlexArray<R>; overload;
+    function Map<R>(const AFunc: TMapFuncValue<T, R>): TFlexArray<R>; overload;
+    procedure Mapped(const AFunc: TMapedFunc<T>); overload;
+    procedure Mapped(const AFunc: TMapedFuncValue<T>); overload;
+  end;
+  
 implementation
 
 { TFlexArray<T> }
@@ -292,7 +304,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 constructor TFlexArray<T>.CreateMatrix(ARows, ACols: Integer; ABaseIndex: Integer);
 begin
-  self := TFlexArray<T>.Create([ARows, ACols], ABaseIndex);
+  TFlexArray<T>.Create([ARows, ACols], ABaseIndex);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -424,7 +436,7 @@ begin
     d := 0; // DestCoords用のインデックス(元の次元数より１つ少ない)
 
     // 元の次元数分ループ
-    for j := 0 to System.High(FDims) - 1 do
+    for j := 0 to System.High(FDims) do
     begin
       if (j + 1) = Dim then
         SrcCoords[j] := Index // 指定された次元は固定値
@@ -724,7 +736,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.Low: Integer;
 begin
-  if Self.DimensionCount <> 1 then
+  if System.Length(FDims) <> 1 then
     raise Exception.Create('多次元配列です。次元を明示してください（例: Low(1)）。');
   Result := FDims[1].Low;
 end;
@@ -736,7 +748,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.High: Integer;
 begin
-  if Self.DimensionCount <> 1 then
+  if System.Length(FDims) <> 1 then
     raise Exception.Create('多次元配列です。次元を明示してください（例: High(1)）。');
   Result := FDims[1].High;
 end;
@@ -1115,7 +1127,7 @@ end;
 // [使用例] Matrix.Reshape([3, 2], 1)  // 1始まりの3x2行列に再定義
 // [備考] 変更前後の全要素数が一致する必要あり
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.Reshape(const AShapes: array of Integer; ABaseIndex: Integer): TFlexArray<T>;
+procedure TFlexArray<T>.Reshape(const AShapes: array of Integer; ABaseIndex: Integer);
 var
   i: Integer;
   NewTotalSize: NativeInt;
@@ -1125,43 +1137,41 @@ begin
   NewTotalSize := 1;
   for i := 0 to System.High(AShapes) do
     NewTotalSize := NewTotalSize * AShapes[i];
-
+  
   // 2. 要素数チェック
   if NewTotalSize <> FTotalSize then
     raise Exception.Create(Format(
       'Reshape: 要素数が一致しません。現在=%d, 新規=%d', [FTotalSize, NewTotalSize]));
-
+  
   // 3. 新しい範囲配列を生成
   SetLength(NewRanges, System.Length(AShapes));
   for i := 0 to System.High(AShapes) do
     NewRanges[i] := [ABaseIndex, ABaseIndex + AShapes[i] - 1];
-
+  
   // 4. 次元情報のみ更新（データは保持）
   InternalSetup(NewRanges);
-
-  Result := Self;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 行列形状に再定義（2次元専用）
 // [引数] 行数, 列数, 開始インデックス
-// [戻値] 再定義された配列
+// [戻値] なし
 // [使用例] Matrix.ReshapeMatrix(3, 4, 1)  // 1始まりの3x4行列に再定義
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.ReshapeMatrix(ARows, ACols: Integer; ABaseIndex: Integer): TFlexArray<T>;
+procedure TFlexArray<T>.ReshapeMatrix(ARows, ACols: Integer; ABaseIndex: Integer);
 begin
-  Result := Reshape([ARows, ACols], ABaseIndex);
+  Reshape([ARows, ACols], ABaseIndex);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] ベクトル形状に再定義（1次元専用）
-// [引数] サイズ, 開始インデックス
-// [戻値] 再定義された配列
-// [使用例] Vector.ReshapeVector(6, 1)  // 1始まりの6要素ベクトルに再定義
+// [引数] 開始インデックス
+// [戻値] なし
+// [使用例] Vector.ReshapeVector(1)  // 1始まりのベクトルに再定義
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.ReshapeVector(ASize: Integer; ABaseIndex: Integer): TFlexArray<T>;
+procedure TFlexArray<T>.ReshapeVector(ABaseIndex: Integer);
 begin
-  Result := Reshape([ASize], ABaseIndex);
+  Reshape([FTotalSize], ABaseIndex);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1170,21 +1180,20 @@ end;
 // [戻値] なし
 // [使用例] Vector.ReshapeRange([-5, 5])  // -5から5までの範囲に再定義
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.ReshapeRange(const ARange: TArray<Integer>): TFlexArray<T>;
+procedure TFlexArray<T>.ReshapeRange(const ARange: TArray<Integer>);
 var
   NewTotalSize: NativeInt;
 begin
   // 1. 新しい範囲の全要素数を計算
   NewTotalSize := ARange[1] - ARange[0] + 1;
-
+  
   // 2. 要素数チェック
   if NewTotalSize <> FTotalSize then
     raise Exception.Create(Format(
       'ReshapeRange: 要素数が一致しません。現在=%d, 新規=%d', [FTotalSize, NewTotalSize]));
-
+  
   // 3. 次元情報のみ更新（データは保持）
   InternalSetup([ARange]);
-  Result := Self;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1193,7 +1202,7 @@ end;
 // [戻値] なし
 // [使用例] Tensor.ReshapeRange([[1, 3], [1, 2]])  // 3x2行列に再定義
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.ReshapeRange(const ARanges: array of TArray<Integer>): TFlexArray<T>;
+procedure TFlexArray<T>.ReshapeRange(const ARanges: array of TArray<Integer>);
 var
   i: Integer;
   NewTotalSize: NativeInt;
@@ -1202,15 +1211,133 @@ begin
   NewTotalSize := 1;
   for i := 0 to System.High(ARanges) do
     NewTotalSize := NewTotalSize * (ARanges[i][1] - ARanges[i][0] + 1);
-
+  
   // 2. 要素数チェック
   if NewTotalSize <> FTotalSize then
     raise Exception.Create(Format(
       'ReshapeRange: 要素数が一致しません。現在=%d, 新規=%d', [FTotalSize, NewTotalSize]));
-
+  
   // 3. 次元情報のみ更新（データは保持）
   InternalSetup(ARanges);
-  Result := Self;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 配列の各要素を変換して新しい配列を返す（非破壊的）
+// [引数] 変換関数（値と座標を引数に取り、新しい値を返す）
+// [戻値] 変換後の新しい配列
+// [使用例] B := A.Map<Integer>(function(Value: string; Coords): Integer
+//           begin
+//             Result := Length(Value) + Coords[0] + Coords[1];
+//           end);
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.Map<R>(const AFunc: TMapFunc<T, R>): TFlexArray<R>;
+var
+  i: Integer;
+  CurrentCoords: TArray<Integer>;
+  Value: T;
+begin
+  // Viewモードは例外
+  if FData = nil then
+    raise Exception.Create('Viewモードの配列は変更できません。CreateFromFlexArrayでコピーしてから使用してください。');
+
+  // 同じ形状で新しい配列を作成
+  Result := TFlexArray<R>.CreateFromRange(GetRanges);
+
+  InitializeCoords(CurrentCoords);
+  for i := 0 to FTotalSize - 1 do
+  begin
+    Result.FData[i] := AFunc(Self.Elements[i], Copy(CurrentCoords));
+    IncCoords(CurrentCoords, GetRanges);
+  end;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 配列の各要素を直接変更する（破壊的）
+// [引数] 変換関数（値と座標を引数に取り、新しい値を返す）
+// [戻値] なし
+// [使用例] A.Mapped(function(Value: string; Coords): string
+//           begin
+//             Result := UpperCase(Value) + '_' + IntToStr(Coords[0]);
+//           end);
+//////////////////////////////////////////////////////////////////////////////////////
+procedure TFlexArray<T>.Mapped(const AFunc: TMapedFunc<T>);
+var
+  i: Integer;
+  CurrentCoords: TArray<Integer>;
+begin
+  // Viewモードは例外
+  if FData = nil then
+    raise Exception.Create('Viewモードの配列は変更できません。CreateFromFlexArrayでコピーしてから使用してください。');
+
+  InitializeCoords(CurrentCoords);
+  for i := 0 to FTotalSize - 1 do
+  begin
+    Self.FData[i] := AFunc(Self.Elements[i], Copy(CurrentCoords));
+    IncCoords(CurrentCoords, GetRanges);
+  end;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 配列の各要素を変換して新しい配列を返す（非破壊的、Simple版）
+// [引数] 変換関数（値のみを引数に取り、新しい値を返す）
+// [戻値] 変換後の新しい配列
+// [使用例] B := A.Map<Integer>(function(Value: string): Integer
+//           begin
+//             Result := Length(Value);
+//           end);
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.Map<R>(const AFunc: TMapFuncValue<T, R>): TFlexArray<R>;
+var
+  i: Integer;
+begin
+  // Viewモードは例外
+  if FData = nil then
+    raise Exception.Create('Viewモードの配列は変更できません。CreateFromFlexArrayでコピーしてから使用してください。');
+
+  // 同じ形状で新しい配列を作成
+  Result := TFlexArray<R>.CreateFromRange(GetRanges);
+
+  for i := 0 to FTotalSize - 1 do
+  begin
+    Result.FData[i] := AFunc(Self.Elements[i]);
+  end;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 配列の各要素を直接変更する（破壊的、Simple版）
+// [引数] 変換関数（値のみを引数に取り、新しい値を返す）
+// [戻値] なし
+// [使用例] A.Mapped(function(Value: string): string
+//           begin
+//             Result := UpperCase(Value);
+//           end);
+//////////////////////////////////////////////////////////////////////////////////////
+procedure TFlexArray<T>.Mapped(const AFunc: TMapedFuncValue<T>);
+var
+  i: Integer;
+begin
+  // Viewモードは例外
+  if FData = nil then
+    raise Exception.Create('Viewモードの配列は変更できません。CreateFromFlexArrayでコピーしてから使用してください。');
+
+  for i := 0 to FTotalSize - 1 do
+  begin
+    Self.FData[i] := AFunc(Self.Elements[i]);
+  end;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 現在の範囲情報を取得する
+// [引数] なし
+// [戻値] 各次元の範囲配列
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.GetRanges: TArray<TArray<Integer>>;
+var
+  i: Integer;
+begin
+  SetLength(Result, Self.DimensionCount);
+  for i := 1 to Self.DimensionCount do
+    Result[i-1] := [FDims[i].Low, FDims[i].High];
 end;
 
 end.
