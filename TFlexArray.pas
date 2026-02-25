@@ -30,10 +30,14 @@ type
   public
   end;
 
-  TMapFunc<T, R> = reference to function(const Value: T; const Coords: TCoords = nil): R;
-  TMapFuncValue<T, R> = reference to function(const Value: T): R;
-  TMapedFunc<T> = reference to function(const Value: T; const Coords: TCoords = nil): T;
-  TMapedFuncValue<T> = reference to function(const Value: T): T;
+  // 非破壊的Map用コールバック
+  TMappedFunc<T, TResult> = reference to function(const Value: T; const Coords: TCoords): TResult;
+  TMappedFuncValue<T, TResult> = reference to function(const Value: T): TResult;
+  // 破壊的Map用コールバック
+  TMapFunc<T> = reference to function(const Value: T; const Coords: TCoords): T;
+  TMapFuncValue<T> = reference to function(const Value: T): T;
+  TFilterFunc<T> = reference to function(const Value: T; const Coords: TCoords): Boolean;
+  TFilterFuncValue<T> = reference to function(const Value: T): Boolean;
 
 type
   TFlexArray<T> = record
@@ -97,6 +101,7 @@ type
     function InternalSetup(const Ranges: TFlexRanges): NativeInt;
     function ValueToStr(const V: T): string;
     procedure CheckDimension(ExpectedDim: Integer);
+    procedure CheckViewMode;
     procedure NormalizeToBaseIndex(TargetBase: Integer);
     function GetCompatibleBaseIndex(const Another: TFlexArray<T>): Integer;
     procedure IncCoords(var CurrentCoords: TCoords;
@@ -157,10 +162,13 @@ type
 
     function GetEnumerator: TFlexEnumerator<T>;
 
-    function Map<R>(const AFunc: TMapFunc<T, R>): TFlexArray<R>; overload;
-    function Map<R>(const AFunc: TMapFuncValue<T, R>): TFlexArray<R>; overload;
-    procedure Mapped(const AFunc: TMapedFunc<T>); overload;
-    procedure Mapped(const AFunc: TMapedFuncValue<T>); overload;
+    // Swiftスタイル: 非破壊的(-ed) / 破壊的(原形)
+    procedure Map(const AFunc: TMapFunc<T>); overload;
+    procedure Map(const AFunc: TMapFuncValue<T>); overload;
+    function Mapped<TResult>(const AFunc: TMappedFunc<T, TResult>): TFlexArray<TResult>; overload;
+    function Mapped<TResult>(const AFunc: TMappedFuncValue<T, TResult>): TFlexArray<TResult>; overload;
+    function Filter(const AFunc: TFilterFunc<T>): TArray<T>; overload;
+    function Filter(const AFunc: TFilterFuncValue<T>): TArray<T>; overload;
   end;
 
 implementation
@@ -362,6 +370,28 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
+// [概要] Viewモードかチェックし、例外を発生させる
+// [引数] なし
+// [戻値] なし
+// [備考] Viewモードの場合は例外を発生（ただし、数値型のみ許可）
+//////////////////////////////////////////////////////////////////////////////////////
+procedure TFlexArray<T>.CheckViewMode;
+var
+  Val: TValue;
+begin
+  if FData = nil then
+  begin
+    // 数値型のみ許可
+    Val := TValue.From<T>(default(T));
+    if Val.Kind in [tkInteger, tkFloat] then
+      Exit; // 数値型はOK
+    
+    // それ以外はNG
+    raise Exception.Create('Viewモードの配列は変更できません。CreateFromFlexArrayでコピーしてから使用してください。');
+  end;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
 // [概要] 指定されたベースインデックスに正規化
 // [引数] TargetBase - 目標のベースインデックス（0または1）
 // [戻値] なし
@@ -473,7 +503,7 @@ begin
     d := 0; // DestCoords用のインデックス(元の次元数より１つ少ない)
 
     // 元の次元数分ループ
-    for j := 0 to System.High(FDims) do
+    for j := 0 to System.High(SrcCoords) do
     begin
       if (j + 1) = Dim then
         SrcCoords[j] := Index // 指定された次元は固定値
@@ -983,12 +1013,12 @@ begin
   SetLength(NewRanges, Self.DimensionCount);
   for d := 0 to Self.DimensionCount - 1 do
   begin
-    NewRanges[d] := [Self.FDims.Items[d].Low, Self.FDims.Items[d].High]; // 初期値
+    NewRanges[d].Low := Self.FDims.Items[d].Low;
     if d = DimIdx then
       // 結合する次元だけ、自分と相手のサイズを足し合わせる
-      NewRanges[d][1] := Self.FDims.Items[d].High + Another.FDims.Items[d].Len
+      NewRanges[d].High := Self.FDims.Items[d].High + Another.FDims.Items[d].Len
     else
-      NewRanges[d][1] := Self.FDims.Items[d].High;
+      NewRanges[d].High := Self.FDims.Items[d].High;
   end;
   Result := TFlexArray<T>.CreateFromRange(NewRanges);
 
@@ -1039,7 +1069,7 @@ begin
   // 新しい形状を準備（1次元だけ増やす）
   SetLength(NewShapes, Source.DimensionCount + 1);
   j := 0;
-  for i := 0 to Source.DimensionCount do  // 新しい次元数分ループ
+  for i := 0 to System.High(NewShapes) do  // 新しい次元数分ループ
   begin
     if i = TargetDim - 1 then
       NewShapes[i] := 1  // 挿入位置はサイズ1
@@ -1213,7 +1243,7 @@ var
   NewTotalSize: NativeInt;
 begin
   // 1. 新しい範囲の全要素数を計算
-  NewTotalSize := ARange[1] - ARange[0] + 1;
+  NewTotalSize := ARange.Length;
   
   // 2. 要素数チェック
   if NewTotalSize <> FTotalSize then
@@ -1238,7 +1268,7 @@ begin
   // 1. 新しい範囲の全要素数を計算
   NewTotalSize := 1;
   for i := 0 to System.High(ARanges) do
-    NewTotalSize := NewTotalSize * (ARanges[i][1] - ARanges[i][0] + 1);
+    NewTotalSize := NewTotalSize * ARanges[i].Length;
   
   // 2. 要素数チェック
   if NewTotalSize <> FTotalSize then
@@ -1253,23 +1283,19 @@ end;
 // [概要] 配列の各要素を変換して新しい配列を返す（非破壊的）
 // [引数] 変換関数（値と座標を引数に取り、新しい値を返す）
 // [戻値] 変換後の新しい配列
-// [使用例] B := A.Map<Integer>(function(Value: string; Coords): Integer
+// [使用例] B := A.Mapped<Integer>(function(Value: string; Coords): Integer
 //           begin
 //             Result := Length(Value) + Coords[0] + Coords[1];
 //           end);
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.Map<R>(const AFunc: TMapFunc<T, R>): TFlexArray<R>;
+function TFlexArray<T>.Mapped<TResult>(const AFunc: TMappedFunc<T, TResult>): TFlexArray<TResult>;
 var
   i: Integer;
   CurrentCoords: TCoords;
   Value: T;
 begin
-  // Viewモードは例外
-  if FData = nil then
-    raise Exception.Create('Viewモードの配列は変更できません。CreateFromFlexArrayでコピーしてから使用してください。');
-
   // 同じ形状で新しい配列を作成
-  Result := TFlexArray<R>.CreateFromRange(GetRanges);
+  Result := TFlexArray<TResult>.CreateFromRange(GetRanges);
 
   InitializeCoords(CurrentCoords);
   for i := 0 to FTotalSize - 1 do
@@ -1283,19 +1309,17 @@ end;
 // [概要] 配列の各要素を直接変更する（破壊的）
 // [引数] 変換関数（値と座標を引数に取り、新しい値を返す）
 // [戻値] なし
-// [使用例] A.Mapped(function(Value: string; Coords): string
+// [使用例] A.Map(function(Value: string; Coords): string
 //           begin
 //             Result := UpperCase(Value) + '_' + IntToStr(Coords[0]);
 //           end);
 //////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.Mapped(const AFunc: TMapedFunc<T>);
+procedure TFlexArray<T>.Map(const AFunc: TMapFunc<T>);
 var
   i: Integer;
   CurrentCoords: TCoords;
 begin
-  // Viewモードは例外
-  if FData = nil then
-    raise Exception.Create('Viewモードの配列は変更できません。CreateFromFlexArrayでコピーしてから使用してください。');
+  CheckViewMode; // 数値型チェック
 
   InitializeCoords(CurrentCoords);
   for i := 0 to FTotalSize - 1 do
@@ -1309,21 +1333,17 @@ end;
 // [概要] 配列の各要素を変換して新しい配列を返す（非破壊的、Simple版）
 // [引数] 変換関数（値のみを引数に取り、新しい値を返す）
 // [戻値] 変換後の新しい配列
-// [使用例] B := A.Map<Integer>(function(Value: string): Integer
+// [使用例] B := A.Mapped<Integer>(function(Value: string): Integer
 //           begin
 //             Result := Length(Value);
 //           end);
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.Map<R>(const AFunc: TMapFuncValue<T, R>): TFlexArray<R>;
+function TFlexArray<T>.Mapped<TResult>(const AFunc: TMappedFuncValue<T, TResult>): TFlexArray<TResult>;
 var
   i: Integer;
 begin
-  // Viewモードは例外
-  if FData = nil then
-    raise Exception.Create('Viewモードの配列は変更できません。CreateFromFlexArrayでコピーしてから使用してください。');
-
   // 同じ形状で新しい配列を作成
-  Result := TFlexArray<R>.CreateFromRange(GetRanges);
+  Result := TFlexArray<TResult>.CreateFromRange(GetRanges);
 
   for i := 0 to FTotalSize - 1 do
   begin
@@ -1335,22 +1355,91 @@ end;
 // [概要] 配列の各要素を直接変更する（破壊的、Simple版）
 // [引数] 変換関数（値のみを引数に取り、新しい値を返す）
 // [戻値] なし
-// [使用例] A.Mapped(function(Value: string): string
+// [使用例] A.Map(function(Value: string): string
 //           begin
 //             Result := UpperCase(Value);
 //           end);
 //////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.Mapped(const AFunc: TMapedFuncValue<T>);
+procedure TFlexArray<T>.Map(const AFunc: TMapFuncValue<T>);
 var
   i: Integer;
 begin
-  // Viewモードは例外
-  if FData = nil then
-    raise Exception.Create('Viewモードの配列は変更できません。CreateFromFlexArrayでコピーしてから使用してください。');
+  CheckViewMode; // 数値型チェック
 
   for i := 0 to FTotalSize - 1 do
   begin
     Self.FData[i] := AFunc(Self.Elements[i]);
+  end;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 配列の要素をフィルタリングして条件に合う要素のみを返す（非破壊的、座標付き）
+// [引数] フィルタ関数（値と座標を引数に取り、条件を返す）
+// [戻値] 条件に合う要素の配列
+// [使用例] Result := A.Filter(function(Value: Integer; Coords): Boolean
+//           begin
+//             Result := (Value > 0) and (Coords[0] mod 2 = 0);
+//           end);
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.Filter(const AFunc: TFilterFunc<T>): TArray<T>;
+var
+  i, Count: Integer;
+  CurrentCoords: TCoords;
+begin
+  // まず結果をカウント
+  Count := 0;
+  InitializeCoords(CurrentCoords);
+  for i := 0 to FTotalSize - 1 do
+  begin
+    if AFunc(Self.Elements[i], Copy(CurrentCoords)) then
+      Inc(Count);
+    IncCoords(CurrentCoords, GetRanges);
+  end;
+    
+  // 配列を確保して格納
+  SetLength(Result, Count);
+  Count := 0;
+  InitializeCoords(CurrentCoords);
+  for i := 0 to FTotalSize - 1 do
+  begin
+    if AFunc(Self.Elements[i], Copy(CurrentCoords)) then
+    begin
+      Result[Count] := Self.Elements[i];
+      Inc(Count);
+    end;
+    IncCoords(CurrentCoords, GetRanges);
+  end;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 配列の要素をフィルタリングして条件に合う要素のみを返す（非破壊的、Simple版）
+// [引数] フィルタ関数（値のみを引数に取り、条件を返す）
+// [戻値] 条件に合う要素の配列
+// [使用例] Result := A.Filter(function(Value: Integer): Boolean
+//           begin
+//             Result := Value > 0;
+//           end);
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.Filter(const AFunc: TFilterFuncValue<T>): TArray<T>;
+var
+  i, Count: Integer;
+begin
+  // まず結果をカウント
+  Count := 0;
+  for i := 0 to FTotalSize - 1 do
+    if AFunc(Self.Elements[i]) then
+      Inc(Count);
+      
+  // 配列を確保して格納
+  SetLength(Result, Count);
+  Count := 0;
+  for i := 0 to FTotalSize - 1 do
+  begin
+    if AFunc(Self.Elements[i]) then
+    begin
+      Result[Count] := Self.Elements[i];
+      Inc(Count);
+    end;
   end;
 end;
 
@@ -1435,11 +1524,11 @@ begin
   // 入力チェック
   for i := 0 to High(ARanges) do
   begin
-    if Length(ARanges[i]) <> 2 then
+    if ARanges[i].Length <> 2 then
       raise Exception.CreateFmt('TFlexRanges.Create: %d番目の範囲が[Low, High]の形式ではありません', [i]);
-    if ARanges[i][0] > ARanges[i][1] then
+    if ARanges[i].Low > ARanges[i].High then
       raise Exception.CreateFmt('TFlexRanges.Create: %d番目の範囲が無効です。Low(%d) > High(%d)', 
-        [i, ARanges[i][0], ARanges[i][1]]);
+        [i, ARanges[i].Low, ARanges[i].High]);
   end;
   
   SetLength(Result, Length(ARanges));
