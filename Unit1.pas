@@ -94,7 +94,7 @@ begin
   StartTime := Now;
   for i := 1 to 10 do
   begin
-    A := A.ReshapeVector(100*100, 1);  // メソッドチェーン
+    A.ReshapeVector(1);  // メソッドチェーン
     log(A.ToString);
   end;
   EndTime := Now;
@@ -148,14 +148,14 @@ begin
   // 以下のコードはコンパイルエラーになるはず
   try
     Log('After reshape to 3x2:');
-    Log(A.Reshape([3, 2], 1).ToString);
+    A.Reshape([3, 2], 1);
     Log(A.ToString);
 
     // もう一度Reshape
 
 
     Log('After reshape to 1x6:');
-    Log(A.ReshapeRange([1, 6]).ToString);
+    A.ReshapeRange([1, 6]);
     Log(A.ToString);
 
   except
@@ -257,23 +257,23 @@ begin
   DateArray := TFlexArray<TDateTime>.CreateFromRange([[2000, 2001], [1, 12], [1, 31]]);
   
   // Mapを使って有効な日付のみを設定（2月30日などは無効）
-  DateArray.Mapped(function(const Value: TDateTime; const Coords: TArray<Integer>): TDateTime
+  DateArray.Map(function(const Value: TDateTime; const Coords: TCoords): TDateTime
   var
     Year, Month, Day: Integer;
   begin
     Year := Coords[0];
     Month := Coords[1];
     Day := Coords[2];
-    
+
     // 有効な日付かチェック
     if IsValidDate(Year, Month, Day) then
       Result := EncodeDate(Year, Month, Day)
     else
       Result := 0; // 無効な日付は0に
   end);
-  
+
   // Mapを使って日付を文字列に変換
-  DateStrings := DateArray.Map<string>(function(const Value: TDateTime; const Coords: TArray<Integer> = nil): string
+  DateStrings := DateArray.Mapped<string>(function(const Value: TDateTime; const Coords: TCoords): string  // ← stringに修正
   begin
     if Value = 0 then
       Result := '---' // 無効な日付
@@ -311,10 +311,10 @@ begin
 
 //  TestReshapeChain;
 //  TestPerformance;
-  TestMapDateCreation; // Map日付作成テスト
+//  TestMapDateCreation; // Map日付作成テスト
 //  Test_New;        // 新規作成
-//  Test_1D_Ref;    // 1次元参照
-//  Test_3D_New;
+  Test_1D_Ref;    // 1次元参照
+  Test_3D_New;
 //  Memo1.Lines.Add('--- テスト完了 ---');
 end;
 

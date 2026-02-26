@@ -11,7 +11,7 @@ uses
 type
   TFlexRange = TArray<Integer>;  // [Low, High] のペア
   TFlexRanges = TArray<TFlexRange>;  // [[Low1, High1], [Low2, High2], ...]
-  TCoords = TArray<Integer>;  // 座標配列 [x, y, z, ...]
+  TCoords = array of Integer;  // 座標配列 [x, y, z, ...]
   TFlexRangeHelper = record helper for TFlexRange
   private
     function GetLow: Integer; inline;
@@ -95,9 +95,9 @@ type
     FTotalSize: NativeInt; // 全要素数
 
     function GetCoords(LinearIndex: NativeInt): TCoords;
-    function GetOffset(const Coords: TCoords): NativeInt;
-    function GetValue(const Coords: TCoords): T;
-    procedure SetValue(const Coords: TCoords; const Value: T);
+    function GetOffset(const Coords: array of Integer): NativeInt;
+    function GetValue(const Coords: array of Integer): T;
+    procedure SetValue(const Coords: array of Integer; const Value: T);
     function InternalSetup(const Ranges: TFlexRanges): NativeInt;
     function ValueToStr(const V: T): string;
     procedure CheckDimension(ExpectedDim: Integer);
@@ -131,7 +131,7 @@ type
     function Low(Dim: Integer): Integer; overload;
     function High(Dim: Integer): Integer; overload;
     function GetDimensionCount: Integer; inline;
-    property Items[const Coords: TCoords]: T read GetValue write SetValue; default;
+    property Items[const Coords: array of Integer]: T read GetValue write SetValue; default;
     property Elements[Index: NativeInt]: T read GetElement write SetElement;
     property DimensionCount: Integer read GetDimensionCount;
 
@@ -510,7 +510,7 @@ begin
       end;
     end;
 
-    Result.Elements[i] := Self.Items[SrcCoords];
+    Result.Elements[i] := Self.Elements[GetOffset(SrcCoords)];
     Result.IncCoords(DestCoords, NewRanges);
   end;
 end;
@@ -543,7 +543,7 @@ end;
 // [戻値] 線形インデックス（範囲外の場合は例外）
 // [例] [[1, 3], [1, 2]] のとき GetOffset([1,1])=0, GetOffset([1,2])=1, GetOffset([2,1])=2
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.GetOffset(const Coords: TCoords): NativeInt;
+function TFlexArray<T>.GetOffset(const Coords: array of Integer): NativeInt;
 var
   i: Integer;
 begin
@@ -567,7 +567,7 @@ end;
 // [引数] 各次元の座標配列
 // [戻値] 座標に対応する値（範囲外の場合は例外）
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.GetValue(const Coords: TCoords): T;
+function TFlexArray<T>.GetValue(const Coords: array of Integer): T;
 begin
   Result := Self.Elements[GetOffset(Coords)];
 end;
@@ -577,7 +577,7 @@ end;
 // [引数] 各次元の座標配列, 設定する値
 // [戻値] なし
 //////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.SetValue(const Coords: TCoords; const Value: T);
+procedure TFlexArray<T>.SetValue(const Coords: array of Integer; const Value: T);
 begin
   Self.Elements[GetOffset(Coords)] := Value;
 end;
@@ -731,7 +731,7 @@ begin
       SrcCoords[NewDims[d] - 1] := DestCoords[d];
     end;
 
-    Result.Elements[i] := Self.Items[SrcCoords];
+    Result.Elements[i] := Self.Elements[GetOffset(SrcCoords)];
     Result.IncCoords(DestCoords, NewRanges);
   end;
 end;
@@ -998,7 +998,7 @@ begin
   Result.InitializeCoords(DestCoords);
   for i := 0 to Self.FTotalSize - 1 do
   begin
-    Result.Elements[i] := Self.Items[DestCoords];
+    Result.Elements[i] := Self.Elements[GetOffset(DestCoords)];
     Result.IncCoords(DestCoords, NewRanges);
   end;
 
@@ -1007,7 +1007,7 @@ begin
   for i := Self.FTotalSize to Result.FTotalSize - 1 do
   begin
     DestCoords[DimIdx] := DestCoords[DimIdx] - SelfSizeAlongDim;
-    Result.Elements[i] := Another.Items[DestCoords];
+    Result.Elements[i] := Another.Elements[GetOffset(DestCoords)];
     DestCoords[DimIdx] := DestCoords[DimIdx] + SelfSizeAlongDim;
     Result.IncCoords(DestCoords, NewRanges);
   end;
