@@ -24,12 +24,12 @@ type
   // TFlexArray用の列挙子（グローバル化）
   TFlexArrayEnumerator<T> = class
   private
-    FHead: Pointer;
+    FData: TArray<T>;
     FTotalSize: NativeInt;
     FIndex: NativeInt;
     function GetCurrent: T;
   public
-    constructor Create(AHead: Pointer; ASize: NativeInt);
+    constructor Create(const AData: TArray<T>; ASize: NativeInt);
     property Current: T read GetCurrent;
     function MoveNext: Boolean;
   end;
@@ -79,7 +79,6 @@ type
   private
     FData: TArray<T>;       // 実データ保持用
     // FBaseOffset: NativeInt; // Viewとしての論理的な開始位置
-    FHead: Pointer;         // 物理先頭ポインタ
     FDims: TFlexDimensions;  // 次元情報（1ベース、0番目は未使用）
     FTotalSize: NativeInt; // 全要素数
 
@@ -194,9 +193,9 @@ begin
   // 後ろの次元から歩幅を計算することで多次元に対応
   for i := Ranges.Count - 1 downto 0 do
   begin
-    // 引数の配列が [Low, High] のペアになっているか念のためチェック
-    if Ranges[i].Length <> 2 then
-      raise Exception.CreateFmt('TFlexArray: 第 %d 次元の指定が [Low, High] のペアではありません。', [i + 1]);
+//    // 引数の配列が [Low, High] のペアになっているか念のためチェック
+//    if Ranges[i].Length <> 2 then
+//      raise Exception.CreateFmt('TFlexArray: 第 %d 次元の指定が [Low, High] のペアではありません。', [i + 1]);
 
     // ★ ここで開始 > 終了をチェック
     if Ranges[i].Low > Ranges[i].High then
@@ -233,7 +232,6 @@ begin
 
   FTotalSize := InternalSetup(Ranges);
   SetLength(FData, FTotalSize);
-  FHead := @FData[0];
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -270,7 +268,6 @@ begin
   FTotalSize := InternalSetup(ARanges);
 
   SetLength(FData, FTotalSize);
-  FHead := @FData[0];
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -287,7 +284,6 @@ begin
 
   // ToVectorを呼び出してデータをコピー
   FData := ASrc.ToVector;
-  FHead := @FData[0];
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -300,13 +296,13 @@ constructor TFlexArray<T>.CreateFromArray(const ASrc: TArray<T>; ABaseIndex: Int
 var
   Range: TFlexRange;
 begin
+  SetLength(Range, 2);
   Range.Low := ABaseIndex;
   Range.High := ABaseIndex + System.Length(ASrc) - 1;
   FTotalSize := InternalSetup([Range]);
 
   // データをコピーして実体化
   SetLength(FData, FTotalSize);
-  FHead := @FData[0];
   TArray.Copy<T>(ASrc, FData, FTotalSize); // 管理型も安全にコピー
 end;
 
@@ -320,10 +316,11 @@ constructor TFlexArray<T>.ViewFromArray(const ASrc: TArray<T>; ABaseIndex: Integ
 var
   Range: TFlexRange;
 begin
+  SetLength(Range, 2);
   Range.Low := ABaseIndex;
   Range.High := ABaseIndex + System.Length(ASrc) - 1;
   FTotalSize := InternalSetup([Range]);
-  FHead := Pointer(ASrc);
+  FData := ASrc;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -578,7 +575,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.GetElement(Index: NativeInt): T;
 begin
-  Result := TArray<T>(FHead)[Index];
+  Result := FData[Index];
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -588,7 +585,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 procedure TFlexArray<T>.SetElement(Index: NativeInt; const Value: T);
 begin
-  TArray<T>(FHead)[Index] := Value;
+  FData[Index] := Value;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -661,7 +658,7 @@ end;
 function TFlexArray<T>.ToVector(): TArray<T>;
 begin
   SetLength(Result, FTotalSize);
-  TArray.Copy<T>(TArray<T>(FHead), Result, FTotalSize);
+  TArray.Copy<T>(FData, Result, FTotalSize);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -810,14 +807,14 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.GetEnumerator: TFlexArrayEnumerator<T>;
 begin
-  Result := TFlexArrayEnumerator<T>.Create(FHead, FTotalSize);
+  Result := TFlexArrayEnumerator<T>.Create(FData, FTotalSize);
 end;
 
 // function TFlexArray<T>.Each(): TFlexEnumerator<T>;
 // begin
 //   // 1次元用：要素を列挙
 //   if (Dimensions = 1) or (Dimensions = 0) then
-//     Result := TFlexEnumerator<T>.Create(FHead, FTotalSize)
+//     Result := TFlexEnumerator<T>.Create(@FData[0], FTotalSize)
 //   else
 //     raise Exception.Create('多次元配列です。Each(次元) を使用してください。');
 // end;
@@ -842,9 +839,9 @@ end;
 // [引数] データの先頭ポインタ, 全要素数
 // [戻値] なし
 //////////////////////////////////////////////////////////////////////////////////////
-constructor TFlexArrayEnumerator<T>.Create(AHead: Pointer; ASize: NativeInt);
+constructor TFlexArrayEnumerator<T>.Create(const AData: TArray<T>; ASize: NativeInt);
 begin
-  FHead := AHead;
+  FData := AData;
   FTotalSize := ASize;
   FIndex := -1;
 end;
@@ -856,8 +853,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArrayEnumerator<T>.GetCurrent: T;
 begin
-  // ポインタから直接アクセス（TArray偽装）
-  Result := TArray<T>(FHead)[FIndex];
+  Result := FData[FIndex];
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1042,7 +1038,7 @@ begin
   end;
 
   // データはコピーせず、ビューとして再解釈
-  Result := TFlexArray<T>.ViewFromArray(TArray<T>(Source.FHead), 1);
+  Result := TFlexArray<T>.ViewFromArray(Source.FData, 1);
   Result.Reshape(NewShapes, 1);
 end;
 

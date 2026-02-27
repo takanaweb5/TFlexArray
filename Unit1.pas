@@ -10,9 +10,7 @@ type
   TForm1 = class(TForm)
     Memo1: TMemo;
     Button1: TButton;
-    Button2: TButton;
     procedure Button1Click(Sender: TObject);
-    procedure Button2Click(Sender: TObject);
   private
     { Private 宣言 }
   public
@@ -44,7 +42,7 @@ begin
   Year := Coords[0];
   Month := Coords[1];
   Day := Coords[2];
-  
+
   // 有効な日付かチェック
   if IsValidDate(Year, Month, Day) then
     Result := EncodeDate(Year, Month, Day)
@@ -70,62 +68,62 @@ var
   ReshapeTime, CopyTime: Integer;
   TestString: string;
 begin
-  Log('[Test: Performance Comparison (String Heavy)]');
-
-  // ヘビーな文字列データを準備
-  TestString := 'This is a very long test string with heavy content to make the performance test more realistic and demanding. ' +
-                'It contains multiple sentences and should consume more memory per element. ' +
-                'The purpose is to create a significant difference between reference counting and actual copying operations. ' +
-                'Each element will hold substantial data to amplify the performance characteristics.';
-
-  // 大きな配列を準備（500x500 = 250,000要素）
-  A := TFlexArray<string>.CreateMatrix(100, 100, 1);
-  Log(Format('Created %dx%d matrix (%d elements)', [100, 100, A.TotalSize]));
-
-  // 全要素にヘビーな文字列を設定（インデックスも文字列で生成）
-  Log('Setting heavy string values...');
-  for i := A.Low(1) to A.High(1) do
-    for j := A.Low(2) to A.High(2) do
-      A[i, j] := Format('Element[%d,%d]', [i, j]);
-
-  Log('Data setup completed');
-
-  // Reshapeのパフォーマンス測定（参照カウントのみ）
-  StartTime := Now;
-  for i := 1 to 10 do
-  begin
-    A.ReshapeVector(1);  // メソッドチェーン
-    log(A.ToString);
-  end;
-  EndTime := Now;
-  ReshapeTime := MilliSecondsBetween(EndTime, StartTime);
-  Log(Format('Reshape (ref-count only): %d ms for 5000 operations', [ReshapeTime]));
-
-  // CreateFromFlexArrayのパフォーマンス測定（実コピー）
-  StartTime := Now;
-  for i := 1 to 10 do  // 回数を大幅に減らす（重い処理のため）
-  begin
-    A := TFlexArray<string>.CreateFromFlexArray(A);
-    log(A.ToString);
-  end;
-  EndTime := Now;
-  CopyTime := MilliSecondsBetween(EndTime, StartTime);
-  Log(Format('CreateFromFlexArray (real copy): %d ms for 100 operations', [CopyTime]));
-
-  // 速度比較
-  if ReshapeTime > 0 then
-    Log(Format('Speed difference: %.1fx faster', [CopyTime * 50.0 / ReshapeTime]))
-  else
-    Log('Reshape was too fast to measure accurately');
-
-  // 実コピーの確認
-  B := TFlexArray<string>.CreateFromFlexArray(A);
-
-
-  // データ整合性確認
-  Log('Sample data check:');
-  Log(Format('A[1,1]: %s', [Copy(A[1,1], 1, 50) + '...']));
-  Log(Format('B[1,1]: %s', [Copy(B[1,1], 1, 50) + '...']));
+//  Log('[Test: Performance Comparison (String Heavy)]');
+//
+//  // ヘビーな文字列データを準備
+//  TestString := 'This is a very long test string with heavy content to make the performance test more realistic and demanding. ' +
+//                'It contains multiple sentences and should consume more memory per element. ' +
+//                'The purpose is to create a significant difference between reference counting and actual copying operations. ' +
+//                'Each element will hold substantial data to amplify the performance characteristics.';
+//
+//  // 大きな配列を準備（500x500 = 250,000要素）
+//  A := TFlexArray<string>.CreateMatrix(100, 100, 1);
+//  Log(Format('Created %dx%d matrix (%d elements)', [100, 100, A.TotalSize]));
+//
+//  // 全要素にヘビーな文字列を設定（インデックスも文字列で生成）
+//  Log('Setting heavy string values...');
+//  for i := A.Low(1) to A.High(1) do
+//    for j := A.Low(2) to A.High(2) do
+//      A[i, j] := Format('Element[%d,%d]', [i, j]);
+//
+//  Log('Data setup completed');
+//
+//  // Reshapeのパフォーマンス測定（参照カウントのみ）
+//  StartTime := Now;
+//  for i := 1 to 10 do
+//  begin
+//    A.ReshapeVector(1);  // メソッドチェーン
+//    log(A.ToString);
+//  end;
+//  EndTime := Now;
+//  ReshapeTime := MilliSecondsBetween(EndTime, StartTime);
+//  Log(Format('Reshape (ref-count only): %d ms for 5000 operations', [ReshapeTime]));
+//
+//  // CreateFromFlexArrayのパフォーマンス測定（実コピー）
+//  StartTime := Now;
+//  for i := 1 to 10 do  // 回数を大幅に減らす（重い処理のため）
+//  begin
+//    A := TFlexArray<string>.CreateFromFlexArray(A);
+//    log(A.ToString);
+//  end;
+//  EndTime := Now;
+//  CopyTime := MilliSecondsBetween(EndTime, StartTime);
+//  Log(Format('CreateFromFlexArray (real copy): %d ms for 100 operations', [CopyTime]));
+//
+//  // 速度比較
+//  if ReshapeTime > 0 then
+//    Log(Format('Speed difference: %.1fx faster', [CopyTime * 50.0 / ReshapeTime]))
+//  else
+//    Log('Reshape was too fast to measure accurately');
+//
+//  // 実コピーの確認
+//  B := TFlexArray<string>.CreateFromFlexArray(A);
+//
+//
+//  // データ整合性確認
+//  Log('Sample data check:');
+//  Log(Format('A[1,1]: %s', [Copy(A[1,1], 1, 50) + '...']));
+//  Log(Format('B[1,1]: %s', [Copy(B[1,1], 1, 50) + '...']));
 end;
 
 // --- Reshapeチェーン実験 ---
@@ -133,37 +131,37 @@ procedure TestReshapeChain;
 var
   A: TFlexArray<Integer>;
 begin
-  Log('[Test: Reshape Chain Experiment]');
-
-  // 2x3行列を作成
-  A := TFlexArray<Integer>.CreateMatrix(2, 3, 1);
-  A[1,1] := 1; A[1,2] := 2; A[1,3] := 3;
-  A[2,1] := 4; A[2,2] := 5; A[2,3] := 6;
-
-  Log('Original 2x3:');
-  Log(A.ToString);
-  Log(A.TotalSize.ToString);
-
-  // 現状のReshapeはprocedureなので戻り値なし
-  // 以下のコードはコンパイルエラーになるはず
-  try
-    Log('After reshape to 3x2:');
-    A.Reshape([3, 2], 1);
-    Log(A.ToString);
-
-    // もう一度Reshape
-
-
-    Log('After reshape to 1x6:');
-    A.ReshapeRange([1, 6]);
-    Log(A.ToString);
-
-  except
-    on E: Exception do
-      Log('Error: ' + E.Message);
-  end;
-
-  Log('Reshape chain test completed');
+//  Log('[Test: Reshape Chain Experiment]');
+//
+//  // 2x3行列を作成
+//  A := TFlexArray<Integer>.CreateMatrix(2, 3, 1);
+//  A[1,1] := 1; A[1,2] := 2; A[1,3] := 3;
+//  A[2,1] := 4; A[2,2] := 5; A[2,3] := 6;
+//
+//  Log('Original 2x3:');
+//  Log(A.ToString);
+//  Log(A.TotalSize.ToString);
+//
+//  // 現状のReshapeはprocedureなので戻り値なし
+//  // 以下のコードはコンパイルエラーになるはず
+//  try
+//    Log('After reshape to 3x2:');
+//    A.Reshape([3, 2], 1);
+//    Log(A.ToString);
+//
+//    // もう一度Reshape
+//
+//
+//    Log('After reshape to 1x6:');
+//    A.ReshapeRange([1, 6]);
+//    Log(A.ToString);
+//
+//  except
+//    on E: Exception do
+//      Log('Error: ' + E.Message);
+//  end;
+//
+//  Log('Reshape chain test completed');
 end;
 
 // ① 新規生成のテスト
@@ -171,18 +169,18 @@ procedure Test_New();
 var
   A: TFlexArray<Double>;
 begin
-  Log('[Test: New]');
-  A := TFlexArray<Double>.CreateFromRange([[1990, 1991], [1, 2]]);
-  A[1990, 1] := 10.5;
-  A[1991, 2] := 99.9;
-  Log(Format('  A[1990, 1] = %.1f', [A[1990, 1]]));
-  Log(Format('  A[1991, 2] = %.1f', [A[1991, 2]]));
-  Log('  --- for-in enumeration ---');
-  for var D in A do
-    Log(Format('    Value: %.1f', [D]));
-
-  Log('  --- ToString ---');
-  Log(A.ToString);
+//  Log('[Test: New]');
+//  A := TFlexArray<Double>.CreateFromRange([[1990, 1991], [1, 2]]);
+//  A[1990, 1] := 10.5;
+//  A[1991, 2] := 99.9;
+//  Log(Format('  A[1990, 1] = %.1f', [A[1990, 1]]));
+//  Log(Format('  A[1991, 2] = %.1f', [A[1991, 2]]));
+//  Log('  --- for-in enumeration ---');
+//  for var D in A do
+//    Log(Format('    Value: %.1f', [D]));
+//
+//  Log('  --- ToString ---');
+//  Log(A.ToString);
 end;
 
 procedure Test_3D_New();
@@ -190,33 +188,33 @@ var
   A: TFlexArray<Double>;
   V: Double;
 begin
-  Log('[Test: 3D New (1990-1991, 1-2, 10-11)]');
-
-  // 3次元配列の生成： [年, 月, 項目ID]
-  // 形状: [[1990, 1991], [1, 2], [10, 11]]
-  A := TFlexArray<Double>.CreateFromRange([[1990, 1991], [1, 3], [10, 11]]);
-
-  // データの代入（離れた場所を突く）
-  A[1990, 1, 10] := 10.5;
-  A[1990, 3, 11] := 20.0;
-  A[1991, 2, 11] := 99.9;
-
-  Log(Format('  A[1990, 1, 10] = %.1f', [A[1990, 1, 10]]));
-  Log(Format('  A[1990, 3, 11] = %.1f', [A[1990, 3, 11]]));
-  Log(Format('  A[1991, 2, 11] = %.1f', [A[1991, 2, 11]]));
-
-  // 未代入箇所（Delphiの動的配列なので初期値は0）
-  Log(Format('  A[1991, 1, 10] = %.1f (Empty)', [A[1991, 1, 10]]));
-
-  Log('  --- for-in enumeration (All 8 elements) ---');
-  // 3次元でも内部は一本のポインタなので、列挙子は全要素を高速に走破します
-  for V in A do
-//    if V <> 0 then
-      Log(Format('    Found Value: %.1f', [V]));
-  Log('  --- ToString ---');
-  Log(A.ToString);
+//  Log('[Test: 3D New (1990-1991, 1-2, 10-11)]');
+//
+//  // 3次元配列の生成： [年, 月, 項目ID]
+//  // 形状: [[1990, 1991], [1, 2], [10, 11]]
+//  A := TFlexArray<Double>.CreateFromRange([[1990, 1991], [1, 3], [10, 11]]);
+//
+//  // データの代入（離れた場所を突く）
+//  A[1990, 1, 10] := 10.5;
+//  A[1990, 3, 11] := 20.0;
+//  A[1991, 2, 11] := 99.9;
+//
+//  Log(Format('  A[1990, 1, 10] = %.1f', [A[1990, 1, 10]]));
+//  Log(Format('  A[1990, 3, 11] = %.1f', [A[1990, 3, 11]]));
+//  Log(Format('  A[1991, 2, 11] = %.1f', [A[1991, 2, 11]]));
+//
+//  // 未代入箇所（Delphiの動的配列なので初期値は0）
+//  Log(Format('  A[1991, 1, 10] = %.1f (Empty)', [A[1991, 1, 10]]));
+//
+//  Log('  --- for-in enumeration (All 8 elements) ---');
+//  // 3次元でも内部は一本のポインタなので、列挙子は全要素を高速に走破します
+//  for V in A do
+////    if V <> 0 then
+//      Log(Format('    Found Value: %.1f', [V]));
+//  Log('  --- ToString ---');
+//  Log(A.ToString);
 end;
-
+//
 // ② 1次元参照のテスト
 procedure Test_1D_Ref();
 var
@@ -226,8 +224,7 @@ begin
   Src := 'a,b,c,d,e'.Split([',']);
 
   Log('[Test: 1D Reference]');
-//  SetLength(Src, 5);
-  A := TFlexArray<string>.CreateFromArray(Src, 1);
+  A := TFlexArray<string>.ViewFromArray(Src, 1);
   Src[0] := '100';
   Log(Format('  Src[0] changed to 100 -> A[1] = %s', [A[1]]));
   A[5] := '500';
@@ -240,70 +237,70 @@ begin
   Log('  --- ToString ---');
   Log(A.ToString);
 end;
-
-// --- Form のイベントハンドラ ---
-
-// Mapメソッドを使って日付を作成するテスト
-procedure TestMapDateCreation;
-var
-  DateArray: TFlexArray<TDateTime>;
-  DateStrings: TFlexArray<string>;
-  i, j, k: Integer;
-  TestDate: TDateTime;
-begin
-  Log('[Test: Map Date Creation]');
-  
-  // 3次元配列を作成: [年, 月, 日]
-  DateArray := TFlexArray<TDateTime>.CreateFromRange([[2000, 2001], [1, 12], [1, 31]]);
-  
-  // Mapを使って有効な日付のみを設定（2月30日などは無効）
-  DateArray.Map(function(const Value: TDateTime; const Coords: TCoords): TDateTime
-  var
-    Year, Month, Day: Integer;
-  begin
-    Year := Coords[0];
-    Month := Coords[1];
-    Day := Coords[2];
-
-    // 有効な日付かチェック
-    if IsValidDate(Year, Month, Day) then
-      Result := EncodeDate(Year, Month, Day)
-    else
-      Result := 0; // 無効な日付は0に
-  end);
-
-  // Mapを使って日付を文字列に変換
-  DateStrings := DateArray.Mapped<string>(function(const Value: TDateTime; const Coords: TCoords): string  // ← stringに修正
-  begin
-    if Value = 0 then
-      Result := '---' // 無効な日付
-    else
-      Result := FormatDateTime('yyyy/mm/dd', Value);
-  end);
-
-  Log('  --- 日付配列のサンプル ---');
-  // 2000年1月1日, 2000年2月29日（うるう年）, 2001年2月28日などを表示
-  Log(Format('  2000/01/01 = %s', [DateStrings[2000, 1, 1]]));
-  Log(Format('  2000/02/29 = %s', [DateStrings[2000, 2, 29]])); // うるう年
-  Log(Format('  2001/02/29 = %s', [DateStrings[2001, 2, 29]])); // 無効な日付
-  Log(Format('  2001/02/28 = %s', [DateStrings[2001, 2, 28]]));
-  
-  Log('  --- 統計情報 ---');
-  var ValidCount := 0;
-  var TotalCount := DateArray.TotalSize;
-  
-  for var DateStr in DateStrings do
-  begin
-    if DateStr <> '---' then
-      Inc(ValidCount);
-  end;
-  
-  Log(Format('  全要素数: %d', [TotalCount]));
-  Log(Format('  有効な日付数: %d', [ValidCount]));
-  Log(Format('  無効な日付数: %d', [TotalCount - ValidCount]));
-  Log('  --- テスト完了 ---');
-end;
-
+//
+//// --- Form のイベントハンドラ ---
+//
+//// Mapメソッドを使って日付を作成するテスト
+//procedure TestMapDateCreation;
+//var
+//  DateArray: TFlexArray<TDateTime>;
+//  DateStrings: TFlexArray<string>;
+//  i, j, k: Integer;
+//  TestDate: TDateTime;
+//begin
+////  Log('[Test: Map Date Creation]');
+////
+////  // 3次元配列を作成: [年, 月, 日]
+////  DateArray := TFlexArray<TDateTime>.CreateFromRange([[2000, 2001], [1, 12], [1, 31]]);
+////
+////  // Mapを使って有効な日付のみを設定（2月30日などは無効）
+////  DateArray.Map(function(const Value: TDateTime; const Coords: TCoords): TDateTime
+////  var
+////    Year, Month, Day: Integer;
+////  begin
+////    Year := Coords[0];
+////    Month := Coords[1];
+////    Day := Coords[2];
+////
+////    // 有効な日付かチェック
+////    if IsValidDate(Year, Month, Day) then
+////      Result := EncodeDate(Year, Month, Day)
+////    else
+////      Result := 0; // 無効な日付は0に
+////  end);
+////
+////  // Mapを使って日付を文字列に変換
+////  DateStrings := DateArray.Mapped<string>(function(const Value: TDateTime; const Coords: TCoords): string  // ← stringに修正
+////  begin
+////    if Value = 0 then
+////      Result := '---' // 無効な日付
+////    else
+////      Result := FormatDateTime('yyyy/mm/dd', Value);
+////  end);
+////
+////  Log('  --- 日付配列のサンプル ---');
+////  // 2000年1月1日, 2000年2月29日（うるう年）, 2001年2月28日などを表示
+////  Log(Format('  2000/01/01 = %s', [DateStrings[2000, 1, 1]]));
+////  Log(Format('  2000/02/29 = %s', [DateStrings[2000, 2, 29]])); // うるう年
+////  Log(Format('  2001/02/29 = %s', [DateStrings[2001, 2, 29]])); // 無効な日付
+////  Log(Format('  2001/02/28 = %s', [DateStrings[2001, 2, 28]]));
+////
+////  Log('  --- 統計情報 ---');
+////  var ValidCount := 0;
+////  var TotalCount := DateArray.TotalSize;
+////
+////  for var DateStr in DateStrings do
+////  begin
+////    if DateStr <> '---' then
+////      Inc(ValidCount);
+////  end;
+////
+////  Log(Format('  全要素数: %d', [TotalCount]));
+////  Log(Format('  有効な日付数: %d', [ValidCount]));
+////  Log(Format('  無効な日付数: %d', [TotalCount - ValidCount]));
+////  Log('  --- テスト完了 ---');
+//end;
+//
 procedure TForm1.Button1Click(Sender: TObject);
 begin
   Memo1.Clear;
@@ -314,119 +311,116 @@ begin
 //  TestMapDateCreation; // Map日付作成テスト
 //  Test_New;        // 新規作成
   Test_1D_Ref;    // 1次元参照
-  Test_3D_New;
+//  Test_3D_New;
 //  Memo1.Lines.Add('--- テスト完了 ---');
 end;
-
-procedure TestUltimateChaosSlice;
-var
-  Data4D, Data3D, Data2D, Data1D: TFlexArray<Integer>;
-  i, j, k, l, expectedValue: Integer;
-  vec: TArray<Integer>;
-begin
-  log('--- カオス次元（Low=0,1混在）スライステスト開始 ---');
-
-  SetLength(vec, 24);
-  for i := 0 to 23 do vec[i] := i; // これを忘れると全部 0 になっちゃいます！
-  // 1. 低下インデックスのバラエティを最大化
-  Data4D := TFlexArray<Integer>.CreateFromRange([
-    [1, 2],       // Dim1: Low=1 (1始まり)
-    [-1, -1],     // Dim2: Low=-1 (負数)
-    [2021, 2023], // Dim3: Low=2021 (巨大な正数)
-    [0, 3]        // Dim4: Low=0 (0始まり)
-  ]); //, vec);
-
-
-  expectedValue := 0;
-
-  // 3. 4重ループによる「次元の皮剥ぎ」
-  // Data4D[i] -> Data3D[j] -> Data2D[k] -> Data1D[l]
-
-  for i := Data4D.Low(1) to Data4D.High(1) do
-  begin
-    Data3D := Data4D.ChooseSlice(1, i);
-
-    for j := Data3D.Low(1) to Data3D.High(1) do
-    begin
-      Data2D := Data3D.ChooseSlice(1, j);
-
-      for k := Data2D.Low(1) to Data2D.High(1) do
-      begin
-        Data1D := Data2D.ChooseSlice(1, k);
-
-        for l := Data1D.Low(1) to Data1D.High(1) do
-        begin
-          // 4. 検証
-          // GetValue([l]) が内部で GetOffset を呼び、
-          // 複雑な歩幅(Stride)とオフセット計算を経て、元のFDataの正解に辿り着く
-          Log(Format('%2d ', [Data1D[l]]));
-
-          if Data1D[l] <> expectedValue then
-            Log(Format(
-              'パズル崩壊！ エラー地点: Indices[%d, %d, %d, %d] 期待値:%d 実際:%d',
-              [i, j, k, l, expectedValue, Data1D[l]]
-            ));
-
-          Inc(expectedValue);
-        end;
-        Log('終了');
-      end;
-    end;
-  end;
-
-  Log('--- テスト成功：カオスなインデックス設定でも連番を完全走破！ ---');
-end;
-
-const
-  // [奥行, 行, 列] のイメージ
-  StaticData3D: array[-1..1, 1..3, 0..1] of Integer = (
-    ( (111, 112), (121, 122), (131, 132) ), // 1ページ目
-    ( (111, 112), (131, 444), (131, 132) ), // 1ページ目
-    ( (211, 212), (221, 222), (231, 253) )  // 3ページ目
-  );
-
-procedure TForm1.Button2Click(Sender: TObject);
-var
-  Flex: TFlexArray<Integer>;
-  Transposed: TFlexArray<Integer>;
-  p: integer;
-begin
-  Flex := TFlexArray<Integer>.CreateFromRange(
-    [
-      [System.Low(StaticData3D),    System.High(StaticData3D)],    // 第1次元: 1..2
-      [System.Low(StaticData3D[1]), System.High(StaticData3D[1])], // 第2次元: 1..3
-      [System.Low(StaticData3D[1,1]), System.High(StaticData3D[1,1])] // 第3次元: 1..2
-    ]
-//    TArray<Integer>(@StaticData3D),
-//    True
-  );
-
-  // Julia方式: Axes[1, 2, 3] の並び順を [3,
-  // --- 転置前の表示 ---
-  Log('=== Original 3D Array (Page, Row, Col) ===');
-  for p := Flex.Low(1) to Flex.High(1) do
-  begin
-    LOg(Format('[Page %d]', [p]));
-    // 1次元目(Page)でスライスして、残りの2次元をToStringで表示
-    Log(Flex.ChooseSlice(1, p).ToString);
-    Log('');
-  end;
-
-  LOg('------------------------------------------');
-
-  // --- 転置後の表示 ([3, 2, 1] への転置) ---
-  Transposed := Flex.Transpose([3, 2, 1]);
-  Transposed := Transposed.Transpose([2,1,3]);
-//  Transposed := Transposed.Transpose([2, 3, 1]);
-  Log('=== Transposed 3D Array (New Page = Old Col) ===');
-  for p := Transposed.Low(1) to Transposed.High(1) do
-  begin
-    Log(Format('[New Page %d]', [p]));
-    Log(Transposed.ToString);
-    Log('');
-  end;
-end;
-
-
-
+//
+//procedure TestUltimateChaosSlice;
+//var
+//  Data4D, Data3D, Data2D, Data1D: TFlexArray<Integer>;
+//  i, j, k, l, expectedValue: Integer;
+//  vec: TArray<Integer>;
+//begin
+////  log('--- カオス次元（Low=0,1混在）スライステスト開始 ---');
+////
+////  SetLength(vec, 24);
+////  for i := 0 to 23 do vec[i] := i; // これを忘れると全部 0 になっちゃいます！
+////  // 1. 低下インデックスのバラエティを最大化
+////  Data4D := TFlexArray<Integer>.CreateFromRange([
+////    [1, 2],       // Dim1: Low=1 (1始まり)
+////    [-1, -1],     // Dim2: Low=-1 (負数)
+////    [2021, 2023], // Dim3: Low=2021 (巨大な正数)
+////    [0, 3]        // Dim4: Low=0 (0始まり)
+////  ]); //, vec);
+////
+////
+////  expectedValue := 0;
+////
+////  // 3. 4重ループによる「次元の皮剥ぎ」
+////  // Data4D[i] -> Data3D[j] -> Data2D[k] -> Data1D[l]
+////
+////  for i := Data4D.Low(1) to Data4D.High(1) do
+////  begin
+////    Data3D := Data4D.ChooseSlice(1, i);
+////
+////    for j := Data3D.Low(1) to Data3D.High(1) do
+////    begin
+////      Data2D := Data3D.ChooseSlice(1, j);
+////
+////      for k := Data2D.Low(1) to Data2D.High(1) do
+////      begin
+////        Data1D := Data2D.ChooseSlice(1, k);
+////
+////        for l := Data1D.Low(1) to Data1D.High(1) do
+////        begin
+////          // 4. 検証
+////          // GetValue([l]) が内部で GetOffset を呼び、
+////          // 複雑な歩幅(Stride)とオフセット計算を経て、元のFDataの正解に辿り着く
+////          Log(Format('%2d ', [Data1D[l]]));
+////
+////          if Data1D[l] <> expectedValue then
+////            Log(Format(
+////              'パズル崩壊！ エラー地点: Indices[%d, %d, %d, %d] 期待値:%d 実際:%d',
+////              [i, j, k, l, expectedValue, Data1D[l]]
+////            ));
+////
+////          Inc(expectedValue);
+////        end;
+////        Log('終了');
+////      end;
+////    end;
+////  end;
+////
+////  Log('--- テスト成功：カオスなインデックス設定でも連番を完全走破！ ---');
+//end;
+//
+//const
+//  // [奥行, 行, 列] のイメージ
+//  StaticData3D: array[-1..1, 1..3, 0..1] of Integer = (
+//    ( (111, 112), (121, 122), (131, 132) ), // 1ページ目
+//    ( (111, 112), (131, 444), (131, 132) ), // 1ページ目
+//    ( (211, 212), (221, 222), (231, 253) )  // 3ページ目
+//  );
+//
+//procedure TForm1.Button2Click(Sender: TObject);
+//var
+//  Flex: TFlexArray<Integer>;
+//  Transposed: TFlexArray<Integer>;
+//  p: integer;
+//begin
+////  Flex := TFlexArray<Integer>.CreateFromRange(
+////    [
+////      [System.Low(StaticData3D),    System.High(StaticData3D)],    // 第1次元: 1..2
+////      [System.Low(StaticData3D[1]), System.High(StaticData3D[1])], // 第2次元: 1..3
+////      [System.Low(StaticData3D[1,1]), System.High(StaticData3D[1,1])] // 第3次元: 1..2
+////    ]
+//////    TArray<Integer>(@StaticData3D),
+//////    True
+////  );
+////
+////  // Julia方式: Axes[1, 2, 3] の並び順を [3,
+////  // --- 転置前の表示 ---
+////  Log('=== Original 3D Array (Page, Row, Col) ===');
+////  for p := Flex.Low(1) to Flex.High(1) do
+////  begin
+////    LOg(Format('[Page %d]', [p]));
+////    // 1次元目(Page)でスライスして、残りの2次元をToStringで表示
+////    Log(Flex.ChooseSlice(1, p).ToString);
+////    Log('');
+////  end;
+////
+////  LOg('------------------------------------------');
+////
+////  // --- 転置後の表示 ([3, 2, 1] への転置) ---
+////  Transposed := Flex.Transpose([3, 2, 1]);
+////  Transposed := Transposed.Transpose([2,1,3]);
+//////  Transposed := Transposed.Transpose([2, 3, 1]);
+////  Log('=== Transposed 3D Array (New Page = Old Col) ===');
+////  for p := Transposed.Low(1) to Transposed.High(1) do
+////  begin
+////    Log(Format('[New Page %d]', [p]));
+////    Log(Transposed.ToString);
+////    Log('');
+////  end;
+//end;
 end.
