@@ -301,79 +301,89 @@ end;
 ////  Log('  --- テスト完了 ---');
 //end;
 //
-procedure TForm1.Button1Click(Sender: TObject);
-begin
-  Memo1.Clear;
-  Memo1.Lines.Add('--- TFlexArray 最終試運転 ---');
 
-//  TestReshapeChain;
-//  TestPerformance;
-//  TestMapDateCreation; // Map日付作成テスト
-//  Test_New;        // 新規作成
-  Test_1D_Ref;    // 1次元参照
-//  Test_3D_New;
-//  Memo1.Lines.Add('--- テスト完了 ---');
+var
+  counter: Integer;
+
+function SequentialNumber2(const Value: Integer; const Coords: TCoords): Integer;
+begin
+  Inc(counter);
+  Result := counter;
 end;
-//
-//procedure TestUltimateChaosSlice;
-//var
-//  Data4D, Data3D, Data2D, Data1D: TFlexArray<Integer>;
-//  i, j, k, l, expectedValue: Integer;
-//  vec: TArray<Integer>;
-//begin
-////  log('--- カオス次元（Low=0,1混在）スライステスト開始 ---');
-////
-////  SetLength(vec, 24);
-////  for i := 0 to 23 do vec[i] := i; // これを忘れると全部 0 になっちゃいます！
-////  // 1. 低下インデックスのバラエティを最大化
-////  Data4D := TFlexArray<Integer>.CreateFromRange([
-////    [1, 2],       // Dim1: Low=1 (1始まり)
-////    [-1, -1],     // Dim2: Low=-1 (負数)
-////    [2021, 2023], // Dim3: Low=2021 (巨大な正数)
-////    [0, 3]        // Dim4: Low=0 (0始まり)
-////  ]); //, vec);
-////
-////
-////  expectedValue := 0;
-////
-////  // 3. 4重ループによる「次元の皮剥ぎ」
-////  // Data4D[i] -> Data3D[j] -> Data2D[k] -> Data1D[l]
-////
-////  for i := Data4D.Low(1) to Data4D.High(1) do
-////  begin
-////    Data3D := Data4D.ChooseSlice(1, i);
-////
-////    for j := Data3D.Low(1) to Data3D.High(1) do
-////    begin
-////      Data2D := Data3D.ChooseSlice(1, j);
-////
-////      for k := Data2D.Low(1) to Data2D.High(1) do
-////      begin
-////        Data1D := Data2D.ChooseSlice(1, k);
-////
-////        for l := Data1D.Low(1) to Data1D.High(1) do
-////        begin
-////          // 4. 検証
-////          // GetValue([l]) が内部で GetOffset を呼び、
-////          // 複雑な歩幅(Stride)とオフセット計算を経て、元のFDataの正解に辿り着く
-////          Log(Format('%2d ', [Data1D[l]]));
-////
-////          if Data1D[l] <> expectedValue then
-////            Log(Format(
-////              'パズル崩壊！ エラー地点: Indices[%d, %d, %d, %d] 期待値:%d 実際:%d',
-////              [i, j, k, l, expectedValue, Data1D[l]]
-////            ));
-////
-////          Inc(expectedValue);
-////        end;
-////        Log('終了');
-////      end;
-////    end;
-////  end;
-////
-////  Log('--- テスト成功：カオスなインデックス設定でも連番を完全走破！ ---');
-//end;
-//
+
+// 座標のインデックス+1を返す（連番生成）
+function SequentialNumber(const Value: Integer; const Coords: TCoords): Integer;
+var
+  i: Integer;
+  Index: Integer;
+begin
+  // 線形インデックスを計算
+  Index := Coords[0];  // 1次元目はそのまま
+  for i := 1 to High(Coords) do
+    Index := Index * 10 + Coords[i];  // 簡易的な計算
+  Result := Index;
+end;
+
+
+procedure TestUltimateChaosSlice;
+var
+  Data4D, Data3D, Data2D, Data1D: TFlexArray<Integer>;
+  i, j, k, l, expectedValue: Integer;
+  vec: TArray<Integer>;
+begin
+  log('--- カオス次元（Low=0,1混在）スライステスト開始 ---');
+
+  SetLength(vec, 24);
+  for i := 0 to 23 do vec[i] := i; // これを忘れると全部 0 になっちゃいます！
+  // 1. 低下インデックスのバラエティを最大化
+  Data4D := TFlexArray<Integer>.CreateFromRange([
+    [1, 2],       // Dim1: Low=1 (1始まり)
+    [-1, -1],     // Dim2: Low=-1 (負数)
+    [2021, 2023], // Dim3: Low=2021 (巨大な正数)
+    [0, 3]        // Dim4: Low=0 (0始まり)
+  ]); //, vec);
+
+
+  expectedValue := 0;
+
+  // 3. 4重ループによる「次元の皮剥ぎ」
+  // Data4D[i] -> Data3D[j] -> Data2D[k] -> Data1D[l]
+
+  for i := Data4D.Low(1) to Data4D.High(1) do
+  begin
+    Data3D := Data4D.ChooseSlice(1, i);
+
+    for j := Data3D.Low(1) to Data3D.High(1) do
+    begin
+      Data2D := Data3D.ChooseSlice(1, j);
+
+      for k := Data2D.Low(1) to Data2D.High(1) do
+      begin
+        Data1D := Data2D.ChooseSlice(1, k);
+
+        for l := Data1D.Low(1) to Data1D.High(1) do
+        begin
+          // 4. 検証
+          // GetValue([l]) が内部で GetOffset を呼び、
+          // 複雑な歩幅(Stride)とオフセット計算を経て、元のFDataの正解に辿り着く
+          Log(Format('%2d ', [Data1D[l]]));
+
+          if Data1D[l] <> expectedValue then
+            Log(Format(
+              'パズル崩壊！ エラー地点: Indices[%d, %d, %d, %d] 期待値:%d 実際:%d',
+              [i, j, k, l, expectedValue, Data1D[l]]
+            ));
+
+          Inc(expectedValue);
+        end;
+        Log('終了');
+      end;
+    end;
+  end;
+
+  Log('--- テスト成功：カオスなインデックス設定でも連番を完全走破！ ---');
+end;
+
 //const
 //  // [奥行, 行, 列] のイメージ
 //  StaticData3D: array[-1..1, 1..3, 0..1] of Integer = (
@@ -423,4 +433,173 @@ end;
 ////    Log('');
 ////  end;
 //end;
+
+
+// ChooseSliceのテスト
+procedure TestChooseSlice;
+var
+  Matrix2D, Matrix3D: TFlexArray<Integer>;
+  Row1, Row2, Col1, Col2: TFlexArray<Integer>;
+  Slice1, Slice2: TFlexArray<Integer>;
+  Page1, Page2: TFlexArray<Integer>;
+begin
+  Log('=== ChooseSlice/ChooseRow/ChooseCol テスト ===');
+
+  // 1. 2次元行列の準備
+  Log('1. 2次元行列 (3x4) を準備:');
+  Matrix2D := TFlexArray<Integer>.CreateMatrix(3, 4, 1);
+  Matrix2D.Map(SequentialNumber);
+  Log(Matrix2D.ToString);
+  Log('');
+
+  // 2. ChooseRowテスト
+  Log('2. ChooseRowテスト:');
+  Log('  Row1 = ChooseRow(1):');
+  Row1 := Matrix2D.ChooseRow(1);
+  Log(Row1.ToString);
+
+  Log('  Row2 = ChooseRow(2):');
+  Row2 := Matrix2D.ChooseRow(2);
+  Log(Row2.ToString);
+  Log('');
+
+  // 3. ChooseColテスト
+  Log('3. ChooseColテスト:');
+  Log('  Col1 = ChooseCol(1):');
+  Col1 := Matrix2D.ChooseCol(1);
+  Log(Col1.ToString);
+
+  Log('  Col2 = ChooseCol(2):');
+  Col2 := Matrix2D.ChooseCol(2);
+  Log(Col2.ToString);
+  Log('');
+
+  // 4. 3次元配列の準備
+  Log('4. 3次元配列 (2x3x2) を準備:');
+  Matrix3D := TFlexArray<Integer>.Create([2, 3, 2], 1);
+  Matrix3D.Map(SequentialNumber);
+  Log(Matrix3D.ToString);
+  Log('');
+
+  // 5. ChooseSliceテスト（3次元）
+  Log('5. ChooseSliceテスト（3次元）:');
+  Log('  Page1 = ChooseSlice(1, 1):');
+  Page1 := Matrix3D.ChooseSlice(1, 1);
+  Log(Page1.ToString);
+
+  Log('  Page2 = ChooseSlice(1, 2):');
+  Page2 := Matrix3D.ChooseSlice(1, 2);
+  Log(Page2.ToString);
+  Log('');
+
+  // 6. ChooseSliceテスト（2次元目）
+  Log('6. ChooseSliceテスト（2次元目）:');
+  Log('  Slice1 = ChooseSlice(2, 1):');
+  Slice1 := Matrix3D.ChooseSlice(2, 1);
+  Log(Slice1.ToString);
+
+  Log('  Slice2 = ChooseSlice(2, 2):');
+  Slice2 := Matrix3D.ChooseSlice(2, 2);
+  Log(Slice2.ToString);
+  Log('');
+
+  // 7. 1次元配列のChooseSliceテスト
+  Log('7. 1次元配列のChooseSliceテスト:');
+  var Vec1D := TFlexArray<Integer>.Create(5, 1);
+  Vec1D.Map(SequentialNumber);
+  Log('  元の1次元配列:');
+  Log(Vec1D.ToString);
+  Log('  ChooseSlice(1, 3):');
+  Log('  結果: ' + Vec1D.ChooseSlice(3).ToString);
+  Log('');
+
+  Log('=== ChooseSliceテスト完了 ===');
+end;
+
+procedure TForm1.Button1Click(Sender: TObject);
+var
+  Flex1D, Flex2D, Flex3D: TFlexArray<Integer>;
+  SourceArray: TArray<Integer>;
+  SourceFlex: TFlexArray<Integer>;
+  ViewFlex: TFlexArray<Integer>;
+begin
+//  Memo1.Lines.Add('=== 全コンストラクタテスト ===');
+//
+//  // 1. Create(ASize, ABaseIndex) - 1次元用
+//  Log('1. Create(5, 1):');
+//  Flex1D := TFlexArray<Integer>.Create(5, 1);
+//  Flex1D.Map(SequentialNumber);
+//  Log(Flex1D.ToString);
+//
+//  // 2. Create(AShapes, ABaseIndex) - 多次元用
+//  Log('2. Create([3, 4], 1):');
+//  Flex2D := TFlexArray<Integer>.Create([3, 4], 1);
+//  Flex2D.Map(SequentialNumber);
+//  Log(Flex2D.ToString);
+//
+//  // 3. CreateMatrix(ARows, ACols, ABaseIndex) - 2次元専用
+//  Log('3. CreateMatrix(2, 3, 1):');
+//  Flex2D := TFlexArray<Integer>.CreateMatrix(2, 3, 1);
+//  Flex2D.Map(SequentialNumber);
+//  Log(Flex2D.ToString);
+//
+//  // 4. CreateFromRange(ARange) - 1次元範囲指定
+//  Log('4. CreateFromRange([-2, 2]):');
+//  Flex1D := TFlexArray<Integer>.CreateFromRange([-2, 2]);
+//  Flex1D.Map(SequentialNumber);
+//  Log(Flex1D.ToString);
+//
+//  // 5. CreateFromRange(ARanges) - 多次元範囲指定
+//  Log('5. CreateFromRange([[0, 1], [0, 2]]):');
+//  Flex2D := TFlexArray<Integer>.CreateFromRange([[0, 1], [0, 2]]);
+//  Flex2D.Map(SequentialNumber);
+//  Log(Flex2D.ToString);
+//
+//  // 6. CreateFromArray(ASrc, ABaseIndex) - 配列から生成
+//  Log('6. CreateFromArray([10, 20, 30], 0):');
+//  SourceArray := [10, 20, 30];
+//  Flex1D := TFlexArray<Integer>.CreateFromArray(SourceArray, 0);
+//  Log(Flex1D.ToString);
+//
+//  // 7. CreateFromFlexArray(ASrc) - FlexArrayからコピー
+//  Log('7. CreateFromFlexArray(Source):');
+//  SourceFlex := TFlexArray<Integer>.Create([2, 2], 1);
+//  SourceFlex.Map(SequentialNumber);
+//  Flex2D := TFlexArray<Integer>.CreateFromFlexArray(SourceFlex);
+//  Log('元配列: ' + SourceFlex.ToString);
+//  Log('コピー: ' + Flex2D.ToString);
+//
+//  // 8. ViewFromArray(ASrc, ABaseIndex) - 参照ビュー
+//  Log('8. ViewFromArray([100, 200], 1):');
+//  SourceArray := [100, 200];
+//  ViewFlex := TFlexArray<Integer>.ViewFromArray(SourceArray, 1);
+//  Log('元配列: [' + SourceArray[0].ToString + ', ' + SourceArray[1].ToString + ']');
+//  Log('ビュー: ' + ViewFlex.ToString);
+//
+//  // 9. 3次元配列テスト
+//  Log('9. Create([2, 2, 2], 1):');
+//  Flex3D := TFlexArray<Integer>.Create([2, 2, 2], 1);
+//  Flex3D.Map(SequentialNumber);
+//  Log(Flex3D.ToString);
+//
+//  // 10. 負のインデックステスト
+//  Log('10. CreateFromRange([[-1, 0], [-1, 0]]):');
+//  Flex2D := TFlexArray<Integer>.CreateFromRange([[-1, 0], [-1, 0]]);
+//  Flex2D.Map(SequentialNumber);
+//  Log(Flex2D.ToString);
+//
+//  Log('=== コンストラクタテスト完了 ===')
+
+
+//  TestReshapeChain;
+//  TestPerformance;
+//  TestMapDateCreation; // Map日付作成テスト
+//  Test_New;        // 新規作成
+//  Test_1D_Ref;    // 1次元参照
+//  Test_3D_New;
+//  Memo1.Lines.Add('--- テスト完了 ---');
+//  TestUltimateChaosSlice;
+  TestChooseSlice;  // ChooseSlice/ChooseRow/ChooseCol テスト
+end;
+
 end.
