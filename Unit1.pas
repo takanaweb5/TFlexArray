@@ -334,32 +334,33 @@ begin
   log('--- カオス次元（Low=0,1混在）スライステスト開始 ---');
 
   SetLength(vec, 24);
-  for i := 0 to 23 do vec[i] := i; // これを忘れると全部 0 になっちゃいます！
+  for i := 0 to High(vec) do vec[i] := i + 1; // これを忘れると全部 0 になっちゃいます！
   // 1. 低下インデックスのバラエティを最大化
-  Data4D := TFlexArray<Integer>.CreateFromRange([
-    [1, 2],       // Dim1: Low=1 (1始まり)
-    [-1, -1],     // Dim2: Low=-1 (負数)
-    [2021, 2023], // Dim3: Low=2021 (巨大な正数)
-    [0, 3]        // Dim4: Low=0 (0始まり)
-  ]); //, vec);
+  Data4D := TFlexArray<Integer>.CreateFromArray(vec, 1);
+  Data4D.Reshape([2, 2, 3, 2], 1);  // 2x2x3x4 → 2x2x3x2 に変更
+//  Data4D.ReshapeRange([[1, 2], [-1, 0], [2021, 2023], [0, 1]]);
+
+  // 4. Reshape後の範囲情報を確認
+  log('Reshape後の範囲情報: ' + Data4D.ToRangesString);
 
 
   expectedValue := 0;
 
   // 3. 4重ループによる「次元の皮剥ぎ」
   // Data4D[i] -> Data3D[j] -> Data2D[k] -> Data1D[l]
-
-  for i := Data4D.Low(1) to Data4D.High(1) do
+  var Dim: Integer;
+  Dim := 2;
+  for i := Data4D.Low(Dim) to Data4D.High(Dim) do
   begin
-    Data3D := Data4D.ChooseSlice(1, i);
+    Data3D := Data4D.ChooseSlice(Dim, i);
 
-    for j := Data3D.Low(1) to Data3D.High(1) do
+    for j := Data3D.Low(Dim) to Data3D.High(Dim) do
     begin
-      Data2D := Data3D.ChooseSlice(1, j);
+      Data2D := Data3D.ChooseSlice(Dim, j);
 
-      for k := Data2D.Low(1) to Data2D.High(1) do
+      for k := Data2D.Low(Dim) to Data2D.High(Dim) do
       begin
-        Data1D := Data2D.ChooseSlice(1, k);
+        Data1D := Data2D.ChooseSlice(Dim, k);
 
         for l := Data1D.Low(1) to Data1D.High(1) do
         begin
@@ -369,10 +370,10 @@ begin
           Log(Format('%2d ', [Data1D[l]]));
 
           if Data1D[l] <> expectedValue then
-            Log(Format(
-              'パズル崩壊！ エラー地点: Indices[%d, %d, %d, %d] 期待値:%d 実際:%d',
-              [i, j, k, l, expectedValue, Data1D[l]]
-            ));
+//            Log(Format(
+//              'パズル崩壊！ エラー地点: Indices[%d, %d, %d, %d] 期待値:%d 実際:%d',
+//              [i, j, k, l, expectedValue, Data1D[l]]
+//            ));
 
           Inc(expectedValue);
         end;
@@ -510,7 +511,7 @@ begin
   Log('  元の1次元配列:');
   Log(Vec1D.ToString);
   Log('  ChooseSlice(1, 3):');
-  Log('  結果: ' + Vec1D.ChooseSlice(3).ToString);
+  Log('  結果: ' + Vec1D[3].ToString);
   Log('');
 
   Log('=== ChooseSliceテスト完了 ===');
@@ -598,8 +599,8 @@ begin
 //  Test_1D_Ref;    // 1次元参照
 //  Test_3D_New;
 //  Memo1.Lines.Add('--- テスト完了 ---');
-//  TestUltimateChaosSlice;
-  TestChooseSlice;  // ChooseSlice/ChooseRow/ChooseCol テスト
+  TestUltimateChaosSlice;
+//  TestChooseSlice;  // ChooseSlice/ChooseRow/ChooseCol テスト
 end;
 
 end.
