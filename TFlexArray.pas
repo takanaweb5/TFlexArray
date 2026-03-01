@@ -1163,12 +1163,10 @@ function TFlexArray<T>.ConcatEqualDim(const Another: TFlexArray<T>; TargetDim: I
 var
   DimIdx: Integer;
   NewRanges: TFlexRanges;
-  DestCoords: TCoords;
-  SelfSizeAlongDim: Integer;
+  ResultCoords, AnotherCoords: TCoords;
   i, d: Integer;
   L, H: Integer;
 begin
-
   // 1-based to 0-based
   DimIdx := TargetDim - 1;
 
@@ -1177,9 +1175,8 @@ begin
   begin
     if d <> DimIdx then
     begin
-      // 結合しない次元はサイズが一致している必要がある
       if Self.FDims[d].Len <> Another.FDims[d].Len then
-        raise Exception.CreateFmt('ConcatEqualDim: 次元%dのサイズが一致しません。Self=%d, Another=%d', 
+        raise Exception.CreateFmt('ConcatEqualDim: 次元%dのサイズが一致しません。Self=%d, Another=%d',
           [d+1, Self.FDims[d].Len, Another.FDims[d].Len]);
     end;
   end;
@@ -1190,7 +1187,6 @@ begin
   begin
     L := Self.FDims[d].Low;
     if d = DimIdx then
-      // 結合する次元だけ、自分と相手のサイズを足し合わせる
       H := Self.FDims[d].High + Another.FDims[d].Len
     else
       H := Self.FDims[d].High;
@@ -1198,22 +1194,34 @@ begin
   end;
   Result := TFlexArray<T>.CreateFromRange(NewRanges);
 
-  // Self のデータを埋める
-  Result.InitializeCoords(DestCoords);
-  for i := 0 to Self.FTotalSize - 1 do
+  // Resultの座標系でループ
+  Result.InitializeCoords(ResultCoords);
+  SetLength(AnotherCoords, Another.DimensionCount);
+  
+  for i := 0 to Result.FTotalSize - 1 do
   begin
-    Result.Elements[i] := Self.Elements[GetOffset(DestCoords)];
-    Result.IncCoords(DestCoords, NewRanges);
-  end;
-
-  // Another のデータを埋める
-  SelfSizeAlongDim := Self.FDims.Items[DimIdx].Len;
-  for i := Self.FTotalSize to Result.FTotalSize - 1 do
-  begin
-    DestCoords[DimIdx] := DestCoords[DimIdx] - SelfSizeAlongDim;
-    Result.Elements[i] := Another.Elements[GetOffset(DestCoords)];
-    DestCoords[DimIdx] := DestCoords[DimIdx] + SelfSizeAlongDim;
-    Result.IncCoords(DestCoords, NewRanges);
+    // 結合次元の座標で判定
+    if ResultCoords[DimIdx] <= Self.FDims[DimIdx].High then
+    begin
+      // Selfの範囲内 - ResultCoordsをそのまま使える
+      Result.Elements[i] := Self.Elements[Self.GetOffset(ResultCoords)];
+    end
+    else
+    begin
+      // Anotherの範囲 - 座標を変換
+      for d := 0 to Another.DimensionCount - 1 do
+      begin
+        if d = DimIdx then
+          // 結合次元はオフセット調整
+          AnotherCoords[d] := ResultCoords[d] - Self.FDims[DimIdx].Len
+        else
+          // 他の次元はそのまま
+          AnotherCoords[d] := ResultCoords[d];
+      end;
+      Result.Elements[i] := Another.Elements[Another.GetOffset(AnotherCoords)];
+    end;
+    
+    Result.IncCoords(ResultCoords, NewRanges);
   end;
 end;
 
@@ -1251,7 +1259,7 @@ begin
       NewShapes[i] := 1  // 挿入位置はサイズ1
     else
     begin
-      NewShapes[i] := Source.FDims.Items[j].Len;
+      NewShapes[i] := Source.FDims[j].Len;
       Inc(j);
     end;
   end;

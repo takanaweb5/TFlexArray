@@ -325,20 +325,225 @@ begin
 end;
 
 
+procedure TestTranspose;
+var
+  Matrix2D, Matrix3D, Tensor3D: TFlexArray<Integer>;
+  Transposed2D, Transposed3D, Swapped3D: TFlexArray<Integer>;
+  i, j, k: Integer;
+begin
+  Log('=== Transposeテスト ===');
+  
+  // 1. 2次元行列の転置テスト
+  Log('1. 2次元行列の転置テスト:');
+  Matrix2D := TFlexArray<Integer>.CreateMatrix(3, 4, 1);
+  Matrix2D.Map(SequentialNumber);
+  Log('元の行列 (3x4):');
+  Log(Matrix2D.ToString);
+  Log('');
+  
+  Transposed2D := Matrix2D.Transpose;
+  Log('転置後の行列 (4x3):');
+  Log(Transposed2D.ToString);
+  Log('');
+  
+  // 2. 3次元テンソルの転置テスト
+  Log('2. 3次元テンソルの転置テスト:');
+  Matrix3D := TFlexArray<Integer>.Create([2, 3, 4], 1);
+  Matrix3D.Map(SequentialNumber);
+  Log('元のテンソル (2x3x4):');
+  Log(Matrix3D.ToString);
+  Log('');
+  
+  // 次元の入れ替え [1,2,3] → [3,2,1]
+  Transposed3D := Matrix3D.Transpose([3, 2, 1]);
+  Log('転置後のテンソル (4x3x2) - [1,2,3]→[3,2,1]:');
+  Log(Transposed3D.ToString);
+  Log('');
+  
+  // 次元の入れ替え [1,2,3] → [2,3,1]
+  Swapped3D := Matrix3D.Transpose([2, 3, 1]);
+  Log('転置後のテンソル (3x4x2) - [1,2,3]→[2,3,1]:');
+  Log(Swapped3D.ToString);
+  Log('');
+  
+  // 3. 4次元テンソルの転置テスト
+  Log('3. 4次元テンソルの転置テスト:');
+  Tensor3D := TFlexArray<Integer>.Create([2, 3, 2, 2], 1);
+  Tensor3D.Map(SequentialNumber);
+  Log('元のテンソル (2x3x2x2):');
+  Log(Tensor3D.ToString);
+  Log('');
+  
+  // 次元の入れ替え [1,2,3,4] → [4,3,2,1]
+  var Transposed4D := Tensor3D.Transpose([4, 3, 2, 1]);
+  Log('転置後のテンソル (2x2x3x2) - [1,2,3,4]→[4,3,2,1]:');
+  Log(Transposed4D.ToString);
+  Log('');
+  
+  // 4. 転置の検証テスト
+  Log('4. 転置の検証テスト:');
+  var TestMatrix := TFlexArray<Integer>.CreateMatrix(2, 3, 1);
+  TestMatrix[1, 1] := 1; TestMatrix[1, 2] := 2; TestMatrix[1, 3] := 3;
+  TestMatrix[2, 1] := 4; TestMatrix[2, 2] := 5; TestMatrix[2, 3] := 6;
+  
+  Log('元の行列:');
+  Log(TestMatrix.ToString);
+  
+  var TestTransposed := TestMatrix.Transpose;
+  Log('転置後の行列:');
+  Log(TestTransposed.ToString);
+  
+  // 検証: [i,j] → [j,i]
+  Log('検証:');
+  Log(Format('元の[1,2]=%d → 転置後[2,1]=%d', [TestMatrix[1, 2], TestTransposed[2, 1]]));
+  Log(Format('元の[2,3]=%d → 転置後[3,2]=%d', [TestMatrix[2, 3], TestTransposed[3, 2]]));
+  Log('');
+  
+  Log('=== Transposeテスト完了 ===');
+end;
+
+procedure TestConcat;
+var
+  Matrix1, Matrix2, Matrix3: TFlexArray<Integer>;
+  Vector1, Vector2, Vector3: TFlexArray<Integer>;
+  Tensor1, Tensor2: TFlexArray<Integer>;
+  ConcatResult: TFlexArray<Integer>;
+  i, j: Integer;
+begin
+  Log('=== Concatテスト ===');
+  
+  // 1. 1次元配列の結合テスト
+  Log('1. 1次元配列の結合テスト:');
+  Vector1 := TFlexArray<Integer>.Create(3, 1);
+  Vector1.Map(SequentialNumber);
+  Log('Vector1 (1D, 3要素):');
+  Log(Vector1.ToString);
+
+  Vector2 := TFlexArray<Integer>.Create(2, 1);
+  Vector2.Map(SequentialNumber);
+
+  Log('Vector2 (1D, 2要素):');
+  Log(Vector2.ToString);
+  
+  // AppendArrayテスト
+  Vector3 := Vector1.AppendArray(Vector2);
+  Log('Vector1.AppendArray(Vector2) - 結合結果:');
+  Log(Vector3.ToString);
+  Log('');
+
+  // 2. 2次元行列の水平結合テスト (HStack)
+  Log('2. 2次元行列の水平結合テスト (HStack):');
+  Matrix1 := TFlexArray<Integer>.CreateMatrix(2, 3, 1);
+  Matrix1.Map(SequentialNumber);
+  Log('Matrix1 (2x3):');
+  Log(Matrix1.ToString);
+  
+  Matrix2 := TFlexArray<Integer>.CreateMatrix(2, 2, 1);
+  Matrix2.Map(SequentialNumber);
+  Log('Matrix2 (2x2):');
+  Log(Matrix2.ToString);
+
+  // HStackテスト (列方向に結合)
+  Matrix3 := Matrix1.HStack(Matrix2);
+  Log('Matrix1.HStack(Matrix2) - 結合結果 (2x5):');
+  Log(Matrix3.ToString);
+  Log('');
+
+  // 3. 2次元行列の垂直結合テスト (VStack)
+  Log('3. 2次元行列の垂直結合テスト (VStack):');
+  Matrix1 := TFlexArray<Integer>.CreateMatrix(2, 3, 1);
+  Matrix1.Map(SequentialNumber);
+  Log('Matrix1 (2x3):');
+  Log(Matrix1.ToString);
+
+  Matrix2 := TFlexArray<Integer>.CreateMatrix(1, 3, 1);
+  Matrix2.Map(SequentialNumber);
+  Log('Matrix2 (1x3):');
+  Log(Matrix2.ToString);
+
+  // VStackテスト (行方向に結合)
+  Matrix3 := Matrix1.VStack(Matrix2);
+  Log('Matrix1.VStack(Matrix2) - 結合結果 (3x3):');
+  Log(Matrix3.ToString);
+  Log('');
+  
+  // 4. 3次元テンソルの結合テスト
+  Log('4. 3次元テンソルの結合テスト:');
+  Tensor1 := TFlexArray<Integer>.Create([2, 2, 3], 1);
+  Tensor1.Map(SequentialNumber);
+  Log('Tensor1 (2x2x3):');
+  Log(Tensor1.ToString);
+  
+  Tensor2 := TFlexArray<Integer>.Create([1, 2, 3], 1);
+  Tensor2.Map(SequentialNumber);
+  Log('Tensor2 (1x2x3):');
+  Log(Tensor2.ToString);
+  
+  // 次元1で結合
+  ConcatResult := Tensor1.Concat(Tensor2, 1);
+  Log('Tensor1.Concat(Tensor2, 1) - 次元1で結合 (3x2x3):');
+  Log(ConcatResult.ToString);
+  Log('');
+  
+  // 5. 次元数の異なる配列の結合テスト
+  Log('5. 次元数の異なる配列の結合テスト:');
+  Matrix1 := TFlexArray<Integer>.CreateMatrix(2, 2, 1);
+  Matrix1.Map(SequentialNumber);
+  Log('Matrix1 (2x2):');
+  Log(Matrix1.ToString);
+
+  Vector1 := TFlexArray<Integer>.Create(2, 1);
+  Vector1.Map(SequentialNumber);
+  Log('Vector1 (1D, 2要素):');
+  Log(Vector1.ToString);
+  
+  // 2Dと1Dを次元2で結合（自動的に1Dが2Dに昇格）
+  ConcatResult := Matrix1.Concat(Vector1, 2);
+  Log('Matrix1.Concat(Vector1, 2) - 2Dと1Dを次元2で結合 (2x3):');
+  Log(ConcatResult.ToString);
+  Log('');
+  
+  // 6. 結合の検証テスト
+  Log('6. 結合の検証テスト:');
+  Matrix1 := TFlexArray<Integer>.CreateMatrix(2, 2, 1);
+  Matrix1[1, 1] := 1; Matrix1[1, 2] := 2;
+  Matrix1[2, 1] := 3; Matrix1[2, 2] := 4;
+  Log('Matrix1:');
+  Log(Matrix1.ToString);
+  
+  Matrix2 := TFlexArray<Integer>.CreateMatrix(2, 1, 1);
+  Matrix2[1, 1] := 5;
+  Matrix2[2, 1] := 6;
+  Log('Matrix2:');
+  Log(Matrix2.ToString);
+  
+  Matrix3 := Matrix1.HStack(Matrix2);
+  Log('HStack結果:');
+  Log(Matrix3.ToString);
+  
+  // 検証
+  Log('検証:');
+  Log(Format('Matrix3[1,1]=%d, Matrix3[1,2]=%d, Matrix3[1,3]=%d', 
+    [Matrix3[1,1], Matrix3[1,2], Matrix3[1,3]]));
+  Log(Format('Matrix3[2,1]=%d, Matrix3[2,2]=%d, Matrix3[2,3]=%d', 
+    [Matrix3[2,1], Matrix3[2,2], Matrix3[2,3]]));
+  Log('');
+  
+  Log('=== Concatテスト完了 ===');
+end;
+
 procedure TestUltimateChaosSlice;
 var
   Data4D, Data3D, Data2D, Data1D: TFlexArray<Integer>;
   i, j, k, l, expectedValue: Integer;
-  vec: TArray<Integer>;
 begin
   log('--- カオス次元（Low=0,1混在）スライステスト開始 ---');
 
-  SetLength(vec, 24);
-  for i := 0 to High(vec) do vec[i] := i + 1; // これを忘れると全部 0 になっちゃいます！
   // 1. 低下インデックスのバラエティを最大化
-  Data4D := TFlexArray<Integer>.CreateFromArray(vec, 1);
+  Data4D := TFlexArray<Integer>.Create([2, 2, 3, 2], 1);
   Data4D.Reshape([2, 2, 3, 2], 1);  // 2x2x3x4 → 2x2x3x2 に変更
 //  Data4D.ReshapeRange([[1, 2], [-1, 0], [2021, 2023], [0, 1]]);
+  Data4D.Map(SequentialNumber2);
 
   // 4. Reshape後の範囲情報を確認
   log('Reshape後の範囲情報: ' + Data4D.ToRangesString);
@@ -599,8 +804,10 @@ begin
 //  Test_1D_Ref;    // 1次元参照
 //  Test_3D_New;
 //  Memo1.Lines.Add('--- テスト完了 ---');
-  TestUltimateChaosSlice;
+//   TestUltimateChaosSlice;
+//  TestTranspose;
 //  TestChooseSlice;  // ChooseSlice/ChooseRow/ChooseCol テスト
+  TestConcat;
 end;
 
 end.
