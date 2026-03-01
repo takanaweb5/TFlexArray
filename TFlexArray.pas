@@ -1194,33 +1194,30 @@ begin
   end;
   Result := TFlexArray<T>.CreateFromRange(NewRanges);
 
-  // Resultの座標系でループ
-  Result.InitializeCoords(ResultCoords);
+  // AnotherCoordsの設定
   SetLength(AnotherCoords, Another.DimensionCount);
-  
+  Result.InitializeCoords(ResultCoords);
+
   for i := 0 to Result.FTotalSize - 1 do
   begin
-    // 結合次元の座標で判定
     if ResultCoords[DimIdx] <= Self.FDims[DimIdx].High then
     begin
-      // Selfの範囲内 - ResultCoordsをそのまま使える
+      // Selfの範囲内
       Result.Elements[i] := Self.Elements[Self.GetOffset(ResultCoords)];
     end
     else
     begin
       // Anotherの範囲 - 座標を変換
-      for d := 0 to Another.DimensionCount - 1 do
+      for d := 0 to Another.DimensionCount - 1 do  // ← 毎回実行される！
       begin
         if d = DimIdx then
-          // 結合次元はオフセット調整
           AnotherCoords[d] := ResultCoords[d] - Self.FDims[DimIdx].Len
         else
-          // 他の次元はそのまま
           AnotherCoords[d] := ResultCoords[d];
       end;
       Result.Elements[i] := Another.Elements[Another.GetOffset(AnotherCoords)];
     end;
-    
+
     Result.IncCoords(ResultCoords, NewRanges);
   end;
 end;
