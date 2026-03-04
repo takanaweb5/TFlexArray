@@ -929,16 +929,16 @@ begin
     case Self.DimensionCount of
       1: Rows[i] := ValueToStr(Self[[r]]);
       2: Rows[i] := ChooseRow(r).ToString;
-      3: Rows[i] := Format('[Page %d]' + sLineBreak + '  %s', [r, ChooseSlice(1, r).ToString]);
+      3: Rows[i] := Format('{Page %d}' {+ sLineBreak} + ' %s', [r, ChooseSlice(1, r).ToString]);
     end;
     Inc(i);
   end;
 
   // フォーマット処理
   case Self.DimensionCount of
-    1: Result := '(' + String.Join(', ', Rows) + ')';
-    2: Result := '(' + sLineBreak + '  ' + String.Join(',' + sLineBreak + '  ', Rows) + sLineBreak + ')';
-    3: Result := '(' + sLineBreak + '  ' + String.Join(',' + sLineBreak + '  ', Rows) + sLineBreak + ')';
+    1: Result := '[' + String.Join(', ', Rows) + ']';
+    2: Result := '[' + sLineBreak + '  ' + String.Join(',' + sLineBreak + '  ', Rows) + sLineBreak + ']';
+    3: Result := '[' + sLineBreak + '  ' + String.Join(',' + sLineBreak + '  ', Rows) {+ sLineBreak} + ']';
   end;
 end;
 
