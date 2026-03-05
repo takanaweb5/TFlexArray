@@ -79,6 +79,7 @@ type
     function GetOffset(const Coords: array of Integer): NativeInt;
     function GetValue(const Coords: array of Integer): T;
     procedure SetValue(const Coords: array of Integer; const Value: T);
+    function GetDimensionCount: Integer; inline;
     procedure InitializeDimensions(const Ranges: TFlexRanges);
     function ValueToStr(const V: T): string;
     procedure CheckDimension(ExpectedDim: Integer);
@@ -92,9 +93,8 @@ type
     function PromoteDimension(const Source: TFlexArray<T>; TargetDim: Integer): TFlexArray<T>;
     function GetRanges: TFlexRanges;
     function RangesStringToRanges(const RangeStr: string): TFlexRanges;
-{$IFDEF FLEXARRAY_ENABLE_LEN}
-    function Len(Dim: Integer): NativeInt;
-{$ENDIF}
+    function GetEnumerator: TFlexArrayEnumerator<T>;
+
   public
 //    constructor Create(Size: Integer; BaseIndex: Integer); overload; // 1D
 //    constructor CreateMatrix(Aows, ACols: Integer; BaseIndex: Integer); overload; // 2D
@@ -110,11 +110,13 @@ type
     function High: Integer; overload; // 1D
     function Low(Dim: Integer): Integer; overload; // nD
     function High(Dim: Integer): Integer; overload; // nD
-    function GetDimensionCount: Integer; inline;
     property Items[const Coords: array of Integer]: T read GetValue write SetValue; default;
     property Elements[Index: NativeInt]: T read GetElement write SetElement;
     property DimensionCount: Integer read GetDimensionCount;
     property TotalSize: NativeInt read FTotalSize;
+{$IFDEF FLEXARRAY_ENABLE_LEN}
+    function Len(Dim: Integer): NativeInt;
+{$ENDIF}
 
     procedure NormalizeToBaseIndex(BaseIndex: Integer);
     procedure Reshape(const Shapes: array of Integer; BaseIndex: Integer);
@@ -142,8 +144,6 @@ type
     function AppendArray(const Another: TFlexArray<T>): TFlexArray<T>; overload;  // 1D
     function AppendArray(const Another: TArray<T>): TFlexArray<T>; overload;  // 1D
     function AppendArray(const Value: T): TFlexArray<T>; overload;  // 1D
-
-    function GetEnumerator: TFlexArrayEnumerator<T>;
 
     // Swiftスタイル: 非破壊的(-ed) / 破壊的(原形)
     procedure Map(const AFunc: TMapFunc<T>); overload;
@@ -1453,13 +1453,60 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
+// [概要] 配列の各要素を直接変更する（破壊的）
+// [引数] 変換関数（値と座標を引数に取り、新しい値を返す）
+// [戻値] なし
+// [使用例]   A.Map(function(const Value: Integer; const Coords: TCoords): Integer
+//               begin
+//                 Result := Coords[0] * 1000 + Coords[1];
+//               end);
+//////////////////////////////////////////////////////////////////////////////////////
+procedure TFlexArray<T>.Map(const AFunc: TMapFunc<T>);
+var
+  i: Integer;
+  CurrentCoords: TCoords;
+  SelfRanges: TFlexRanges;
+begin
+  CheckViewMode;
+
+  SelfRanges := GetRanges;
+  InitializeCoords(CurrentCoords);
+  for i := 0 to FTotalSize - 1 do
+  begin
+    Self.Elements[i] := AFunc(Self.Elements[i], CurrentCoords);
+    IncCoords(CurrentCoords, SelfRanges);
+  end;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 配列の各要素を直接変更する（破壊的）
+// [引数] 変換関数（値のみを引数に取り、新しい値を返す）
+// [戻値] なし
+// [使用例]  A.Map(function(const Value: Integer): Integer
+//             begin
+//               Result := Value * 2;
+//             end);
+//////////////////////////////////////////////////////////////////////////////////////
+procedure TFlexArray<T>.Map(const AFunc: TMapFuncValue<T>);
+var
+  i: Integer;
+begin
+  CheckViewMode; // 数値型チェック
+
+  for i := 0 to FTotalSize - 1 do
+  begin
+    Self.Elements[i] := AFunc(Self.Elements[i]);
+  end;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
 // [概要] 配列の各要素を変換して新しい配列を返す（非破壊的）
 // [引数] 変換関数（値と座標を引数に取り、新しい値を返す）
 // [戻値] 変換後の新しい配列
-// [使用例] B := A.Mapped<Integer>(function(Value: string; Coords): Integer
-//           begin
-//             Result := Length(Value) + Coords[0] + Coords[1];
-//           end);
+// [使用例] B := A.Mapped<string>(function(const Value: Integer; const Coords: TCoords): string
+//                 begin
+//                   Result := Coords[0].ToString + '.' + Coords[1].ToString;
+//                 end);
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.Mapped<TResult>(const AFunc: TMappedFunc<T, TResult>): TFlexArray<TResult>;
 var
@@ -1480,13 +1527,13 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
-// [概要] 配列の各要素を変換して新しい配列を返す（非破壊的、Simple版）
+// [概要] 配列の各要素を変換して新しい配列を返す（非破壊的）
 // [引数] 変換関数（値のみを引数に取り、新しい値を返す）
 // [戻値] 変換後の新しい配列
-// [使用例] B := A.Mapped<Integer>(function(Value: string): Integer
-//           begin
-//             Result := Length(Value);
-//           end);
+// [使用例] B := A.Mapped<string>(function(const Value: Integer): string
+//                 begin
+//                   Result := Value.ToString;
+//                 end);
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.Mapped<TResult>(const AFunc: TMappedFuncValue<T, TResult>): TFlexArray<TResult>;
 var
@@ -1502,60 +1549,13 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
-// [概要] 配列の各要素を直接変更する（破壊的）
-// [引数] 変換関数（値と座標を引数に取り、新しい値を返す）
-// [戻値] なし
-// [使用例] A.Map(function(Value: string; Coords): string
-//           begin
-//             Result := UpperCase(Value) + '_' + IntToStr(Coords[0]);
-//           end);
-//////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.Map(const AFunc: TMapFunc<T>);
-var
-  i: Integer;
-  CurrentCoords: TCoords;
-  SelfRanges: TFlexRanges;
-begin
-  CheckViewMode; // 数値型チェック
-
-  SelfRanges := GetRanges;
-  InitializeCoords(CurrentCoords);
-  for i := 0 to FTotalSize - 1 do
-  begin
-    Self.Elements[i] := AFunc(Self.Elements[i], CurrentCoords);
-    IncCoords(CurrentCoords, SelfRanges);
-  end;
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
-// [概要] 配列の各要素を直接変更する（破壊的、Simple版）
-// [引数] 変換関数（値のみを引数に取り、新しい値を返す）
-// [戻値] なし
-// [使用例] A.Map(function(Value: string): string
-//           begin
-//             Result := UpperCase(Value);
-//           end);
-//////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.Map(const AFunc: TMapFuncValue<T>);
-var
-  i: Integer;
-begin
-  CheckViewMode; // 数値型チェック
-
-  for i := 0 to FTotalSize - 1 do
-  begin
-    Self.Elements[i] := AFunc(Self.Elements[i]);
-  end;
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
-// [概要] 配列の要素をフィルタリングして条件に合う要素のみを返す（非破壊的、座標付き）
+// [概要] 配列の要素をフィルタリングして条件に合う要素のみを返す（非破壊的）
 // [引数] フィルタ関数（値と座標を引数に取り、条件を返す）
 // [戻値] 条件に合う要素の配列
-// [使用例] Result := A.Filter(function(Value: Integer; Coords): Boolean
-//           begin
-//             Result := (Value > 0) and (Coords[0] mod 2 = 0);
-//           end);
+// [使用例] B := A.Filter(function(const Value: Integer; const Coords: TCoords): Boolean
+//                 begin
+//                   Result := (Coords[0] >= Coords[1]);
+//                 end);
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.Filter(const AFunc: TFilterFunc<T>): TArray<T>;
 var
@@ -1590,13 +1590,13 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
-// [概要] 配列の要素をフィルタリングして条件に合う要素のみを返す（非破壊的、Simple版）
+// [概要] 配列の要素をフィルタリングして条件に合う要素のみを返す（非破壊的）
 // [引数] フィルタ関数（値のみを引数に取り、条件を返す）
 // [戻値] 条件に合う要素の配列
-// [使用例] Result := A.Filter(function(Value: Integer): Boolean
-//           begin
-//             Result := Value > 0;
-//           end);
+// [使用例] B := A.Filter(function(const Value: Integer): Boolean
+//                 begin
+//                   Result := Value > 0;
+//                 end);
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.Filter(const AFunc: TFilterFuncValue<T>): TArray<T>;
 var
