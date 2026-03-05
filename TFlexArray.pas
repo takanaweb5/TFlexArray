@@ -64,6 +64,9 @@ type
   TFilterFunc<T> = reference to function(const Value: T; const Coords: TCoords): Boolean;
   TFilterFuncValue<T> = reference to function(const Value: T): Boolean;
 
+  // Map用コールバック関数サンプル(連番作成)
+  function SequentialNumber(const Value: Integer; const Coords: TCoords): Integer;
+
 type
   TFlexArray<T> = record
   private
@@ -1630,6 +1633,18 @@ begin
   SetLength(Result, Self.DimensionCount);
   for i := 0 to Self.DimensionCount - 1 do
     Result[i] := [FDims[i].Low, FDims[i].High]; // FDimsは0ベース
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] Map用コールバック関数
+//        連番を生成する
+// [引数] Value: 現在値（無視）, Coords: 座標配列
+// [戻値] 座標ベースの連番
+// [使用例] FlexArray.Map(SequentialNumber) → [1, 2, 3, ...]
+//////////////////////////////////////////////////////////////////////////////////////
+function SequentialNumber(const Value: Integer; const Coords: TCoords): Integer;
+begin
+  Result := Coords[0];
 end;
 
 end.
