@@ -82,14 +82,14 @@ type
     procedure CheckViewMode;
     procedure NormalizeToBaseIndex(TargetBase: Integer);
     function GetCompatibleBaseIndex(const Another: TFlexArray<T>): Integer;
-    procedure IncCoords(var CurrentCoords: TCoords;
-      const Ranges: TFlexRanges);
+    procedure IncCoords(var CurrentCoords: TCoords; const Ranges: TFlexRanges);
     procedure InitializeCoords(var Coords: TCoords);
     function GetElement(Index: NativeInt): T; inline;
     procedure SetElement(Index: NativeInt; const Value: T); inline;
     function ConcatEqualDim(const Another: TFlexArray<T>; TargetDim: Integer): TFlexArray<T>;
     function PromoteDimension(const Source: TFlexArray<T>; TargetDim: Integer): TFlexArray<T>;
     function GetRanges: TFlexRanges;
+    function RangesStringToRanges(const RangeStr: string): TFlexRanges;
 {$IFDEF FLEXARRAY_ENABLE_LEN}
     function Len(Dim: Integer): NativeInt;
 {$ENDIF}
@@ -99,6 +99,7 @@ type
     constructor Create(const AShapes: array of Integer; ABaseIndex: Integer); overload; // nD
     constructor CreateFromRange(const ARange: TFlexRange); overload; // 1D
     constructor CreateFromRange(const ARanges: TFlexRanges); overload; // nD
+    constructor CreateFromRange(const RangeStr: string); overload;
     constructor CreateFromFlexArray(const ASrc: TFlexArray<T>); overload;
     constructor CreateFromArray(const ASrc: TArray<T>; ABaseIndex: Integer); overload;
     constructor ViewFromArray(const ASrc: TArray<T>; ABaseIndex: Integer); overload;
@@ -118,6 +119,7 @@ type
     procedure ReshapeMatrix(ARows, ACols: Integer; ABaseIndex: Integer); // 2D
     procedure ReshapeRange(const ARange: TFlexRange); overload; // 1D
     procedure ReshapeRange(const ARanges: TFlexRanges); overload; // nD
+    procedure ReshapeRange(const RangeStr: string); overload;
 
     function ToVector(): TArray<T>;
     function ToString(): string;
@@ -136,6 +138,7 @@ type
 
     function AppendArray(const Another: TFlexArray<T>): TFlexArray<T>; overload;  // 1D
     function AppendArray(const Another: TArray<T>): TFlexArray<T>; overload;  // 1D
+    function AppendArray(const Value: T): TFlexArray<T>; overload;  // 1D
 
     function GetEnumerator: TFlexArrayEnumerator<T>;
 
@@ -463,6 +466,18 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
+// [概要] 文字列から範囲指定コンストラクタ
+// [引数] 範囲文字列 "1..3,1..2" または "[1..3,1..2]"
+// [戻値] なし
+// [使用例] TFlexArray<Integer>.CreateFromRange("1..3,1..2")  // 3x2行列
+//////////////////////////////////////////////////////////////////////////////////////
+constructor TFlexArray<T>.CreateFromRange(const RangeStr: string);
+begin
+  InitializeDimensions(RangesStringToRanges(RangeStr));
+  SetLength(FData, FTotalSize);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
 // [概要] FlexArrayからFlexArrayを生成する
 // [引数] 元のFlexArray
 // [戻値] なし
@@ -620,6 +635,17 @@ begin
 
   // 3. 次元情報のみ更新（データは保持）
   InitializeDimensions(ARanges);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 文字列から範囲指定による再定義
+// [引数] 範囲文字列 "1..3,1..2" または "[1..3,1..2]"
+// [戻値] なし
+// [使用例] Matrix.ReshapeRange("1..3,1..2")  // 3x2行列に再定義
+//////////////////////////////////////////////////////////////////////////////////////
+procedure TFlexArray<T>.ReshapeRange(const RangeStr: string);
+begin
+  ReshapeRange(RangesStringToRanges(RangeStr));
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -951,6 +977,49 @@ function TFlexArray<T>.ToVector(): TArray<T>;
 begin
   SetLength(Result, FTotalSize);
   TArray.Copy<T>(FData, Result, FTotalSize);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 範囲文字列を解析して範囲配列に変換
+// [引数] 範囲文字列 "1..3,1..2" または "[1..3,1..2]"
+// [戻値] 範囲配列 [[1,3],[1,2]]
+// [使用例] ParseRangesString("1..3,1..2") → [[1,3],[1,2]]
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.RangesStringToRanges(const RangeStr: string): TFlexRanges;
+var
+  CleanStr: string;
+  Parts: TArray<string>;
+  RangeParts: TArray<string>;
+  i: Integer;
+  L, H: Integer;
+begin
+  CleanStr := RangeStr.Replace(' ', '');
+
+  if (CleanStr.StartsWith('[')) and (CleanStr.EndsWith(']')) then
+    CleanStr := CleanStr.Substring(1, CleanStr.Length - 2);
+
+  if CleanStr = '' then
+    raise Exception.CreateFmt('ParseRangesString: 不正な形式 "%s"', [RangeStr]);
+
+  Parts := CleanStr.Split([',']);
+
+  // 次元の数だけLOOP
+  SetLength(Result, System.Length(Parts));
+  for i := 0 to System.High(Parts) do
+  begin
+    RangeParts := Parts[i].Split(['..']);
+
+    if System.Length(RangeParts) <> 2 then
+      raise Exception.CreateFmt('ParseRangesString: 不正な形式 "%s"', [RangeStr]);
+
+    if not (TryStrToInt(RangeParts[0], L) and TryStrToInt(RangeParts[1], H)) then
+      raise Exception.CreateFmt('ParseRangesString: 不正な形式 "%s"', [RangeStr]);
+
+    if L > H then
+      raise Exception.CreateFmt('ParseRangesString: 不正な形式 "%s"', [RangeStr]);
+
+    Result[i] := [L, H];
+  end;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1354,9 +1423,30 @@ end;
 // [戻値] 結合結果の配列
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.AppendArray(const Another: TArray<T>): TFlexArray<T>;
+var
+  NewRange: TFlexRange;
+  AnotherLen: Integer;
 begin
   CheckDimension(1);
-  Result := Self.Concat(TFlexArray<T>.ViewFromArray(Another, 1), 1);
+  AnotherLen := System.Length(Another);
+  NewRange := [Self.Low, Self.High + AnotherLen];
+  Result := TFlexArray<T>.CreateFromRange(NewRange);
+
+  // 高速なデータコピー
+  TArray.Copy<T>(Self.FData, Result.FData, 0, 0, Self.FTotalSize);
+  TArray.Copy<T>(Another, Result.FData, 0, Self.FTotalSize, AnotherLen);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 単一値を配列に追加
+// [引数] 追加する値
+// [戻値] 追加後の新しい配列
+// [使用例] Vector1 := Vector1.AppendArray(42)
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.AppendArray(const Value: T): TFlexArray<T>;
+begin
+  CheckDimension(1);
+  Result := Self.AppendArray([Value]);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
