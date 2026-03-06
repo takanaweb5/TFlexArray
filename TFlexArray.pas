@@ -85,7 +85,7 @@ type
     procedure CheckDimension(ExpectedDim: Integer);
     procedure CheckViewMode;
     function GetCompatibleBaseIndex(const Another: TFlexArray<T>): Integer;
-    procedure IncCoords(var CurrentCoords: TCoords; const Ranges: TFlexRanges);
+    procedure IncCoords(var CurrentCoords: TCoords);
     procedure InitializeCoords(var Coords: TCoords);
     function GetElement(Index: NativeInt): T; inline;
     procedure SetElement(Index: NativeInt; const Value: T); inline;
@@ -796,7 +796,7 @@ begin
     end;
 
     Result.Elements[i] := Self.Elements[GetOffset(SrcCoords)];
-    Result.IncCoords(DestCoords, NewRanges);
+    Result.IncCoords(DestCoords);
   end;
 end;
 
@@ -1090,7 +1090,7 @@ begin
     end;
 
     Result.Elements[i] := Self.Elements[GetOffset(SrcCoords)];
-    Result.IncCoords(DestCoords, NewRanges);
+    Result.IncCoords(DestCoords);
   end;
 end;
 
@@ -1173,6 +1173,20 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
+// [概要] 現在の範囲情報を取得する
+// [引数] なし
+// [戻値] 各次元の範囲配列
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.GetRanges: TFlexRanges;
+var
+  i: Integer;
+begin
+  SetLength(Result, Self.DimensionCount);
+  for i := 0 to Self.DimensionCount - 1 do
+    Result[i] := [FDims[i].Low, FDims[i].High]; // FDimsは0ベース
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
 // [概要] 列挙子を取得
 // [引数] なし
 // [戻値] 列挙子オブジェクト
@@ -1198,10 +1212,11 @@ end;
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 座標をインクリメント
-// [引数] 現在の座標配列, 各次元の範囲配列
+// [引数] 現在の座標配列
 // [戻値] なし
+// [備考] 自身の次元情報を使用して座標をインクリメント
 //////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.IncCoords(var CurrentCoords: TCoords; const Ranges: TFlexRanges);
+procedure TFlexArray<T>.IncCoords(var CurrentCoords: TCoords);
 var
   d: Integer;
 begin
@@ -1211,8 +1226,7 @@ begin
     Inc(CurrentCoords[d]); // 1つ進める
 
     // 上限(High)を超えていないかチェック
-    // Ranges[d] は [Low, High] の 2要素配列を想定
-    if CurrentCoords[d] <= Ranges[d].High then
+    if CurrentCoords[d] <= Self.FDims[d].High then
     begin
       // 繰り上がりが発生しなかったので、ここで終了
       Exit;
@@ -1221,7 +1235,7 @@ begin
     begin
       // 上限を超えたので、現在の次元を最小値(Low)にリセットし、
       // ループを継続して一つ左の次元（上位桁）を Inc する
-      CurrentCoords[d] := Ranges[d].Low;
+      CurrentCoords[d] := Self.FDims[d].Low;
     end;
   end;
 end;
@@ -1290,7 +1304,7 @@ begin
       Result.Elements[i] := Another.Elements[Another.GetOffset(AnotherCoords)];
     end;
 
-    Result.IncCoords(ResultCoords, NewRanges);
+    Result.IncCoords(ResultCoords);
   end;
 end;
 
@@ -1465,16 +1479,14 @@ procedure TFlexArray<T>.Map(const AFunc: TMapFunc<T>);
 var
   i: Integer;
   CurrentCoords: TCoords;
-  SelfRanges: TFlexRanges;
 begin
   CheckViewMode;
 
-  SelfRanges := GetRanges;
-  InitializeCoords(CurrentCoords);
+  Self.InitializeCoords(CurrentCoords);
   for i := 0 to FTotalSize - 1 do
   begin
     Self.Elements[i] := AFunc(Self.Elements[i], CurrentCoords);
-    IncCoords(CurrentCoords, SelfRanges);
+    Self.IncCoords(CurrentCoords);
   end;
 end;
 
@@ -1512,17 +1524,15 @@ function TFlexArray<T>.Mapped<TResult>(const AFunc: TMappedFunc<T, TResult>): TF
 var
   i: Integer;
   CurrentCoords: TCoords;
-  SelfRanges: TFlexRanges;
 begin
   // 同じ形状で新しい配列を作成
-  SelfRanges := GetRanges;
-  Result := TFlexArray<TResult>.CreateFromRange(SelfRanges);
+  Result := TFlexArray<TResult>.CreateFromRange(GetRanges);
 
-  InitializeCoords(CurrentCoords);
+  Result.InitializeCoords(CurrentCoords);
   for i := 0 to FTotalSize - 1 do
   begin
     Result.Elements[i] := AFunc(Self.Elements[i], CurrentCoords);
-    IncCoords(CurrentCoords, SelfRanges);
+    Result.IncCoords(CurrentCoords);
   end;
 end;
 
@@ -1561,23 +1571,21 @@ function TFlexArray<T>.Filter(const AFunc: TFilterFunc<T>): TArray<T>;
 var
   i, Count: Integer;
   CurrentCoords: TCoords;
-  SelfRanges: TFlexRanges;
 begin
-  SelfRanges := GetRanges;
   // まず結果をカウント
   Count := 0;
-  InitializeCoords(CurrentCoords);
+  Self.InitializeCoords(CurrentCoords);
   for i := 0 to FTotalSize - 1 do
   begin
     if AFunc(Self.Elements[i], CurrentCoords) then
       Inc(Count);
-    IncCoords(CurrentCoords, SelfRanges);
+    Self.IncCoords(CurrentCoords);
   end;
 
   // 配列を確保して格納
   SetLength(Result, Count);
   Count := 0;
-  InitializeCoords(CurrentCoords);
+  Self.InitializeCoords(CurrentCoords);
   for i := 0 to FTotalSize - 1 do
   begin
     if AFunc(Self.Elements[i], CurrentCoords) then
@@ -1585,7 +1593,7 @@ begin
       Result[Count] := Self.Elements[i];
       Inc(Count);
     end;
-    IncCoords(CurrentCoords, SelfRanges);
+    Self.IncCoords(CurrentCoords);
   end;
 end;
 
@@ -1619,20 +1627,6 @@ begin
       Inc(Count);
     end;
   end;
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
-// [概要] 現在の範囲情報を取得する
-// [引数] なし
-// [戻値] 各次元の範囲配列
-//////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.GetRanges: TFlexRanges;
-var
-  i: Integer;
-begin
-  SetLength(Result, Self.DimensionCount);
-  for i := 0 to Self.DimensionCount - 1 do
-    Result[i] := [FDims[i].Low, FDims[i].High]; // FDimsは0ベース
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
