@@ -1214,29 +1214,24 @@ end;
 // [概要] 座標をインクリメント
 // [引数] 現在の座標配列
 // [戻値] なし
-// [備考] 自身の次元情報を使用して座標をインクリメント
+// [備考] 2次元配列 [1..3, 1..2] の場合:
+//        [1,1] → [1,2] → [2,1] → [2,2] → [3,1] → [3,2]
 //////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.IncCoords(var CurrentCoords: TCoords);
+procedure TFlexArray<T>.IncCoords(var Coords: TCoords);
 var
   d: Integer;
 begin
   // 一番右側の次元（最小単位）から順にチェック
-  for d := system.High(CurrentCoords) downto 0 do
+  for d := system.High(Coords) downto 0 do
   begin
-    Inc(CurrentCoords[d]); // 1つ進める
+    Inc(Coords[d]);
 
-    // 上限(High)を超えていないかチェック
-    if CurrentCoords[d] <= Self.FDims[d].High then
-    begin
-      // 繰り上がりが発生しなかったので、ここで終了
-      Exit;
-    end
-    else
-    begin
-      // 上限を超えたので、現在の次元を最小値(Low)にリセットし、
-      // ループを継続して一つ左の次元（上位桁）を Inc する
-      CurrentCoords[d] := Self.FDims[d].Low;
-    end;
+    // 上限を超えていないなら終了
+    if Coords[d] <= Self.FDims[d].High then Exit;
+
+    // 上限を超えたので、現在の次元を最小値(Low)にリセットし、
+    // ループを継続して一つ左の次元（上位桁）を Inc する
+    Coords[d] := Self.FDims[d].Low;
   end;
 end;
 
@@ -1294,7 +1289,7 @@ begin
     else
     begin
       // Anotherの範囲 - 座標を変換
-      for d := 0 to Another.DimensionCount - 1 do  // ← 毎回実行される！
+      for d := 0 to Another.DimensionCount - 1 do
       begin
         if d = DimIdx then
           AnotherCoords[d] := ResultCoords[d] - Self.FDims[DimIdx].Len
@@ -1375,7 +1370,7 @@ begin
     raise Exception.CreateFmt('Concat: %d次元配列と%d次元配列は結合できません。AnotherはSelfと同次元か1次元少ない必要があります', 
       [Self.DimensionCount, Another.DimensionCount]);
 
-  // ベースインデックスのチェック（すべて一致しないと例外）と取得
+  // ベースインデックスのチェックと取得（すべて一致しないと例外）
   BaseIndex := Self.GetCompatibleBaseIndex(Another);
 
   SelfReady := Self;
@@ -1481,7 +1476,6 @@ var
   CurrentCoords: TCoords;
 begin
   CheckViewMode;
-
   Self.InitializeCoords(CurrentCoords);
   for i := 0 to FTotalSize - 1 do
   begin
@@ -1503,8 +1497,7 @@ procedure TFlexArray<T>.Map(const AFunc: TMapFuncValue<T>);
 var
   i: Integer;
 begin
-  CheckViewMode; // 数値型チェック
-
+  CheckViewMode;
   for i := 0 to FTotalSize - 1 do
   begin
     Self.Elements[i] := AFunc(Self.Elements[i]);
@@ -1525,9 +1518,7 @@ var
   i: Integer;
   CurrentCoords: TCoords;
 begin
-  // 同じ形状で新しい配列を作成
   Result := TFlexArray<TResult>.CreateFromRange(GetRanges);
-
   Result.InitializeCoords(CurrentCoords);
   for i := 0 to FTotalSize - 1 do
   begin
@@ -1549,9 +1540,7 @@ function TFlexArray<T>.Mapped<TResult>(const AFunc: TMappedFuncValue<T, TResult>
 var
   i: Integer;
 begin
-  // 同じ形状で新しい配列を作成
   Result := TFlexArray<TResult>.CreateFromRange(GetRanges);
-
   for i := 0 to FTotalSize - 1 do
   begin
     Result.Elements[i] := AFunc(Self.Elements[i]);
@@ -1582,7 +1571,7 @@ begin
     Self.IncCoords(CurrentCoords);
   end;
 
-  // 配列を確保して格納
+  // 結果を設定
   SetLength(Result, Count);
   Count := 0;
   Self.InitializeCoords(CurrentCoords);
@@ -1616,7 +1605,7 @@ begin
     if AFunc(Self.Elements[i]) then
       Inc(Count);
 
-  // 配列を確保して格納
+  // 結果を設定
   SetLength(Result, Count);
   Count := 0;
   for i := 0 to FTotalSize - 1 do
