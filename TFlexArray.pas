@@ -53,6 +53,11 @@ type
   // Filter用コールバック
   TFilterFunc<T> = reference to function(const Value: T; const Coords: TCoords): Boolean;
   TFilterFuncValue<T> = reference to function(const Value: T): Boolean;
+  // Reduce用コールバック（InitialValueあり）
+  TReduceFunc<T, TResult> = reference to function(const Current: TResult; const Value: T; const Coords: TCoords): TResult;
+  TReduceFuncValue<T, TResult> = reference to function(const Current: TResult; const Value: T): TResult;
+  // Reduce用コールバック（InitialValueなし、TResult=Tに固定）
+  TReduceFuncSimple<T> = reference to function(const Current: T; const Value: T): T;
 
   // Map用コールバック関数サンプル(連番作成)
   function SequentialNumber(const Value: Integer; const Coords: TCoords): Integer;
@@ -139,6 +144,15 @@ type
 
     function Filter(const AFunc: TFilterFunc<T>): TArray<T>; overload;
     function Filter(const AFunc: TFilterFuncValue<T>): TArray<T>; overload;
+
+    function Reduce<TResult>(const InitialValue: TResult; const AFunc: TReduceFunc<T, TResult>): TResult; overload;
+    function Reduce<TResult>(const InitialValue: TResult; const AFunc: TReduceFuncValue<T, TResult>): TResult; overload;
+    function Reduce(const AFunc: TReduceFuncSimple<T>): T; overload;
+
+    // 集約関数
+    function Sum: T;
+    function Max: T;
+    function Min: T;
   end;
 
 implementation
@@ -1446,6 +1460,136 @@ begin
       Result[Count] := Self.Elements[i];
       Inc(Count);
     end;
+  end;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 配列の要素を集約して単一の値に変換（非破壊的）
+// [引数] 初期値, 集約関数（値と座標を引数に取る）
+// [戻値] 集約結果
+// [使用例] Sum := A.Reduce<Integer>(0,
+//            function(const Current: Integer; const Value: Integer; const Coords: TCoords): Integer
+//            begin
+//              Result := Current + Coords[0];
+//            end);
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.Reduce<TResult>(const InitialValue: TResult; const AFunc: TReduceFunc<T, TResult>): TResult;
+var
+  i: Integer;
+  CurrentCoords: TCoords;
+begin
+  Result := InitialValue;
+  Self.InitializeCoords(CurrentCoords);
+  for i := 0 to FTotalSize - 1 do
+  begin
+    Result := AFunc(Result, Self.Elements[i], CurrentCoords);
+    Self.IncCoords(CurrentCoords);
+  end;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 配列の要素を集約して単一の値に変換（非破壊的）
+// [引数] 初期値, 集約関数（値のみを引数に取る）
+// [戻値] 集約結果
+// [使用例] Sum := A.Reduce<Integer>(0,
+//            function(const Current: Integer; const Value: Integer): Integer
+//            begin
+//              Result := Current + Value;
+//            end);
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.Reduce<TResult>(const InitialValue: TResult; const AFunc: TReduceFuncValue<T, TResult>): TResult;
+var
+  i: Integer;
+begin
+  Result := InitialValue;
+  for i := 0 to FTotalSize - 1 do
+    Result := AFunc(Result, Self.Elements[i]);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 配列の要素を集約して単一の値に変換（非破壊的、初期値なし）
+// [引数] 集約関数（値のみを引数に取る、TResult=Tに固定）
+// [戻値] 集約結果
+// [備考] 空配列の場合は例外を発生させる
+// [使用例] Sum := A.Reduce(
+//            function(const Current: Integer; const Value: Integer): Integer
+//            begin
+//              Result := Current + Value;
+//            end);
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.Reduce(const AFunc: TReduceFuncSimple<T>): T;
+var
+  i: Integer;
+begin
+  Result := Self.Elements[0];
+  for i := 1 to FTotalSize - 1 do
+    Result := AFunc(Result, Self.Elements[i]);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 配列の要素の合計値を計算
+// [引数] なし
+// [戻値] 合計値
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.Sum: T;
+var
+  i: Integer;
+  Value: Variant;
+begin
+  try
+    Value := 0;
+    for i := 0 to FTotalSize - 1 do
+      Value := Value + TValue.From<T>(Self.Elements[i]).AsVariant;
+
+    Result := TValue.FromVariant(Value).AsType<T>;
+  except
+    raise Exception.Create('Sum: この型では+演算子が使用できません');
+  end;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 配列の要素の最大値を取得
+// [引数] なし
+// [戻値] 最大値
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.Max: T;
+var
+  i: Integer;
+  Value: Variant;
+begin
+  try
+    Value := TValue.From<T>(Self.Elements[0]).AsVariant;
+    for i := 1 to FTotalSize - 1 do
+    begin
+      if TValue.From<T>(Self.Elements[i]).AsVariant > Value then
+        Value := TValue.From<T>(Self.Elements[i]).AsVariant;
+    end;
+    Result := TValue.FromVariant(Value).AsType<T>;
+  except
+    raise Exception.Create('Max: この型では>演算子が使用できません');
+  end;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 配列の要素の最小値を取得
+// [引数] なし
+// [戻値] 最小値
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.Min: T;
+var
+  i: Integer;
+  Value: Variant;
+begin
+  try
+    Value := TValue.From<T>(Self.Elements[0]).AsVariant;
+    for i := 1 to FTotalSize - 1 do
+    begin
+      if TValue.From<T>(Self.Elements[i]).AsVariant < Value then
+        Value := TValue.From<T>(Self.Elements[i]).AsVariant;
+    end;
+    Result := TValue.FromVariant(Value).AsType<T>;
+  except
+    raise Exception.Create('Min: この型では<演算子が使用できません');
   end;
 end;
 
