@@ -231,11 +231,11 @@ begin
   Log(Format('  A[5] changed to 500   -> Src[4] = %s', [Src[4]]));
 
   Log('  --- for-in enumeration ---');
-  for var D in A do
-    Log(Format('    Value: %s', [D]));
-
-  Log('  --- ToString ---');
-  Log(A.ToString);
+//  for var D in A do
+//    Log(Format('    Value: %s', [D]));
+//
+//  Log('  --- ToString ---');
+//  Log(A.ToString);
 end;
 //
 //// --- Form のイベントハンドラ ---
@@ -305,14 +305,8 @@ end;
 var
   counter: Integer;
 
-function SequentialNumber2(const Value: Integer; const Coords: TCoords): Integer;
-begin
-  Inc(counter);
-  Result := counter;
-end;
-
 // 座標のインデックス+1を返す（連番生成）
-function SequentialNumber(const Value: Integer; const Coords: TCoords): Integer;
+function SequentialNumber2(const Value: Integer; const Coords: TCoords): Integer;
 var
   i: Integer;
   Index: Integer;
@@ -335,17 +329,17 @@ begin
   
   // 1. 2次元行列の転置テスト
   Log('1. 2次元行列の転置テスト:');
-  Matrix2D := TFlexArray<Integer>.CreateMatrix(3, 4, 1);
+  Matrix2D := TFlexArray<Integer>.Create([3, 4], 1);
   Matrix2D.Map(SequentialNumber);
   Log('元の行列 (3x4):');
   Log(Matrix2D.ToString);
   Log('');
-  
+
   Transposed2D := Matrix2D.Transpose;
   Log('転置後の行列 (4x3):');
   Log(Transposed2D.ToString);
   Log('');
-  
+
   // 2. 3次元テンソルの転置テスト
   Log('2. 3次元テンソルの転置テスト:');
   Matrix3D := TFlexArray<Integer>.Create([2, 3, 4], 1);
@@ -353,19 +347,19 @@ begin
   Log('元のテンソル (2x3x4):');
   Log(Matrix3D.ToString);
   Log('');
-  
+
   // 次元の入れ替え [1,2,3] → [3,2,1]
   Transposed3D := Matrix3D.Transpose([3, 2, 1]);
   Log('転置後のテンソル (4x3x2) - [1,2,3]→[3,2,1]:');
   Log(Transposed3D.ToString);
   Log('');
-  
+
   // 次元の入れ替え [1,2,3] → [2,3,1]
   Swapped3D := Matrix3D.Transpose([2, 3, 1]);
   Log('転置後のテンソル (3x4x2) - [1,2,3]→[2,3,1]:');
   Log(Swapped3D.ToString);
   Log('');
-  
+
   // 3. 4次元テンソルの転置テスト
   Log('3. 4次元テンソルの転置テスト:');
   Tensor3D := TFlexArray<Integer>.Create([2, 3, 2, 2], 1);
@@ -373,32 +367,32 @@ begin
   Log('元のテンソル (2x3x2x2):');
   Log(Tensor3D.ToString);
   Log('');
-  
+
   // 次元の入れ替え [1,2,3,4] → [4,3,2,1]
   var Transposed4D := Tensor3D.Transpose([4, 3, 2, 1]);
   Log('転置後のテンソル (2x2x3x2) - [1,2,3,4]→[4,3,2,1]:');
   Log(Transposed4D.ToString);
   Log('');
-  
+
   // 4. 転置の検証テスト
   Log('4. 転置の検証テスト:');
-  var TestMatrix := TFlexArray<Integer>.CreateMatrix(2, 3, 1);
+  var TestMatrix := TFlexArray<Integer>.Create([2, 3], 1);
   TestMatrix[1, 1] := 1; TestMatrix[1, 2] := 2; TestMatrix[1, 3] := 3;
   TestMatrix[2, 1] := 4; TestMatrix[2, 2] := 5; TestMatrix[2, 3] := 6;
-  
+
   Log('元の行列:');
   Log(TestMatrix.ToString);
-  
+
   var TestTransposed := TestMatrix.Transpose;
   Log('転置後の行列:');
   Log(TestTransposed.ToString);
-  
+
   // 検証: [i,j] → [j,i]
   Log('検証:');
   Log(Format('元の[1,2]=%d → 転置後[2,1]=%d', [TestMatrix[1, 2], TestTransposed[2, 1]]));
   Log(Format('元の[2,3]=%d → 転置後[3,2]=%d', [TestMatrix[2, 3], TestTransposed[3, 2]]));
   Log('');
-  
+
   Log('=== Transposeテスト完了 ===');
 end;
 
@@ -411,20 +405,20 @@ var
   i, j: Integer;
 begin
   Log('=== Concatテスト ===');
-  
+
   // 1. 1次元配列の結合テスト
   Log('1. 1次元配列の結合テスト:');
-  Vector1 := TFlexArray<Integer>.Create(3, 1);
+  Vector1 := TFlexArray<Integer>.Create([3], 1);
   Vector1.Map(SequentialNumber);
   Log('Vector1 (1D, 3要素):');
   Log(Vector1.ToString);
 
-  Vector2 := TFlexArray<Integer>.Create(2, 1);
+  Vector2 := TFlexArray<Integer>.Create([2], 1);
   Vector2.Map(SequentialNumber);
 
   Log('Vector2 (1D, 2要素):');
   Log(Vector2.ToString);
-  
+
   // AppendArrayテスト
   Vector3 := Vector1.AppendArray(Vector2);
   Log('Vector1.AppendArray(Vector2) - 結合結果:');
@@ -433,12 +427,12 @@ begin
 
   // 2. 2次元行列の水平結合テスト (HStack)
   Log('2. 2次元行列の水平結合テスト (HStack):');
-  Matrix1 := TFlexArray<Integer>.CreateMatrix(2, 3, 1);
+  Matrix1 := TFlexArray<Integer>.Create([2, 3], 1);
   Matrix1.Map(SequentialNumber);
   Log('Matrix1 (2x3):');
   Log(Matrix1.ToString);
-  
-  Matrix2 := TFlexArray<Integer>.CreateMatrix(2, 2, 1);
+
+  Matrix2 := TFlexArray<Integer>.Create([2, 2], 1);
   Matrix2.Map(SequentialNumber);
   Log('Matrix2 (2x2):');
   Log(Matrix2.ToString);
@@ -451,12 +445,12 @@ begin
 
   // 3. 2次元行列の垂直結合テスト (VStack)
   Log('3. 2次元行列の垂直結合テスト (VStack):');
-  Matrix1 := TFlexArray<Integer>.CreateMatrix(2, 3, 1);
+  Matrix1 := TFlexArray<Integer>.Create([2, 3], 1);
   Matrix1.Map(SequentialNumber);
   Log('Matrix1 (2x3):');
   Log(Matrix1.ToString);
 
-  Matrix2 := TFlexArray<Integer>.CreateMatrix(1, 3, 1);
+  Matrix2 := TFlexArray<Integer>.Create([1, 3], 1);
   Matrix2.Map(SequentialNumber);
   Log('Matrix2 (1x3):');
   Log(Matrix2.ToString);
@@ -487,12 +481,12 @@ begin
   
   // 5. 次元数の異なる配列の結合テスト
   Log('5. 次元数の異なる配列の結合テスト:');
-  Matrix1 := TFlexArray<Integer>.CreateMatrix(2, 2, 1);
+  Matrix1 := TFlexArray<Integer>.Create([2, 2], 1);
   Matrix1.Map(SequentialNumber);
   Log('Matrix1 (2x2):');
   Log(Matrix1.ToString);
 
-  Vector1 := TFlexArray<Integer>.Create(2, 1);
+  Vector1 := TFlexArray<Integer>.Create([2], 1);
   Vector1.Map(SequentialNumber);
   Log('Vector1 (1D, 2要素):');
   Log(Vector1.ToString);
@@ -505,13 +499,13 @@ begin
   
   // 6. 結合の検証テスト
   Log('6. 結合の検証テスト:');
-  Matrix1 := TFlexArray<Integer>.CreateMatrix(2, 2, 1);
+  Matrix1 := TFlexArray<Integer>.Create([2, 2], 1);
   Matrix1[1, 1] := 1; Matrix1[1, 2] := 2;
   Matrix1[2, 1] := 3; Matrix1[2, 2] := 4;
   Log('Matrix1:');
   Log(Matrix1.ToString);
-  
-  Matrix2 := TFlexArray<Integer>.CreateMatrix(2, 1, 1);
+
+  Matrix2 := TFlexArray<Integer>.Create([2, 1], 1);
   Matrix2[1, 1] := 5;
   Matrix2[2, 1] := 6;
   Log('Matrix2:');
@@ -532,11 +526,316 @@ begin
   Log('=== Concatテスト完了 ===');
 end;
 
+procedure TestAppendArrayStrings;
+var
+  Words1, Words2, Words3: TFlexArray<string>;
+  SingleWord: TFlexArray<string>;
+  StringArray: TArray<string>;
+  SpecialArray: TArray<string>;
+begin
+  Log('=== AppendArray文字列テスト ===');
+  
+  // 1. 基本的な文字列配列の結合
+  Log('1. 基本的な文字列配列の結合:');
+  Words1 := TFlexArray<string>.Create([3], 1);
+  Words1.Map(function(const Value: string; const Coords: TCoords): string
+            begin
+              Result := 'Apple_' + IntToStr(Coords[0]);
+            end);
+  Log('Words1:');
+  Log(Words1.ToString);
+  
+  Words2 := TFlexArray<string>.Create([2], 1);
+  Words2.Map(function(const Value: string; const Coords: TCoords): string
+            begin
+              Result := 'Orange_' + IntToStr(Coords[0]);
+            end);
+  Log('Words2:');
+  Log(Words2.ToString);
+  
+  // AppendArrayテスト
+  Words3 := Words1.AppendArray(Words2);
+  Log('Words1.AppendArray(Words2) - 結合結果:');
+  Log(Words3.ToString);
+  Log('');
+  
+  // 2. TArray<string>からの結合
+  Log('2. TArray<string>からの結合:');
+  StringArray := ['Banana', 'Grape', 'Melon'];
+  Words3 := Words1.AppendArray(StringArray);
+  Log('Words1.AppendArray(["Banana", "Grape", "Melon"]) - 結合結果:');
+  Log(Words3.ToString);
+  Log('');
+  
+  // 3. 単一値の追加
+  Log('3. 単一値の追加:');
+  SingleWord := Words1.AppendArray('Cherry');
+  Log('Words1.AppendArray("Cherry") - 結合結果:');
+  Log(SingleWord.ToString);
+  Log('');
+  
+  // 4. 複雑な文字列変換のテスト
+  Log('4. 複雑な文字列変換のテスト:');
+  Words1 := TFlexArray<string>.Create([2], 1);
+  Words1.Map(function(const Value: string; const Coords: TCoords): string
+            begin
+              Result := 'Item_' + IntToStr(Coords[0]) + '_' + 
+                       FormatDateTime('hhnnss', Now);
+            end);
+  Log('Words1 (タイムスタンプ付き):');
+  Log(Words1.ToString);
+  
+  Words2 := TFlexArray<string>.Create([2], 1);
+  Words2.Map(function(const Value: string; const Coords: TCoords): string
+            begin
+              Result := 'Extra_' + UpperCase(StringOfChar('x', Coords[0]));
+            end);
+  Log('Words2 (大文字変換):');
+  Log(Words2.ToString);
+  
+  Words3 := Words1.AppendArray(Words2);
+  Log('結合結果:');
+  Log(Words3.ToString);
+  Log('');
+  
+  // 5. 空文字列と特殊文字のテスト
+  Log('5. 空文字列と特殊文字のテスト:');
+  Words1 := TFlexArray<string>.Create([2], 1);
+  Words1.Map(function(const Value: string; const Coords: TCoords): string
+            begin
+              if Coords[0] = 1 then
+                Result := ''
+              else
+                Result := 'Special: ' + #9#10#13 + 'Chars';
+            end);
+  Log('Words1 (空文字列と特殊文字):');
+  Log(Words1.ToString);
+  
+  SpecialArray := ['', 'Test', 'Line1' + #13 + 'Line2'];
+  Words3 := Words1.AppendArray(SpecialArray);
+  Log('特殊文字配列を追加:');
+  Log(Words3.ToString);
+  Log('');
+  
+  Log('=== AppendArray文字列テスト完了 ===');
+end;
+
+procedure TestRangeStringOperations;
+var
+  Matrix1D, Matrix2D, Matrix3D: TFlexArray<string>;
+  Matrix1D_Reshaped, Matrix2D_Reshaped: TFlexArray<string>;
+  ComplexMatrix: TFlexArray<string>;
+begin
+  Log('=== RangeStr文字列テスト ===');
+
+  // 1. 1次元範囲文字列からの生成
+  Log('1. 1次元範囲文字列からの生成:');
+  Matrix1D := TFlexArray<string>.CreateFromRange('1..5 ');
+  Matrix1D.Map(function(const Value: string; const Coords: TCoords): string
+              begin
+                Result := 'Pos_' + IntToStr(Coords[0]);
+              end);
+  Log('Matrix1D (1..5):');
+  Log(Matrix1D.ToString);
+  Log('範囲情報: ' + Matrix1D.ToRangesString);
+  Log('');
+
+  // 2. 2次元範囲文字列からの生成
+  Log('2. 2次元範囲文字列からの生成:');
+  Matrix2D := TFlexArray<string>.CreateFromRange('[1..3, 1..2]');
+  Matrix2D.Map(function(const Value: string; const Coords: TCoords): string
+              begin
+                Result := Format('[%d,%d]', [Coords[0], Coords[1]]);
+              end);
+  Log('Matrix2D ([1..3,1..2]):');
+  Log(Matrix2D.ToString);
+  Log('範囲情報: ' + Matrix2D.ToRangesString);
+  Log('');
+
+  // 3. 3次元範囲文字列からの生成
+  Log('3. 3次元範囲文字列からの生成:');
+  Matrix3D := TFlexArray<string>.CreateFromRange('1..2, 1..2, 1..2');
+  Matrix3D.Map(function(const Value: string; const Coords: TCoords): string
+              begin
+                Result := Format('[%d,%d,%d]', [Coords[0], Coords[1], Coords[2]]);
+              end);
+  Log('Matrix3D (1..2,1..2,1..2):');
+  Log(Matrix3D.ToString);
+  Log('範囲情報: ' + Matrix3D.ToRangesString);
+  Log('');
+
+  // 4. ReshapeRange文字列テスト（1次元）
+  Log('4. ReshapeRange文字列テスト（1次元）:');
+  Matrix1D_Reshaped := TFlexArray<string>.Create([5], 1);
+  Matrix1D_Reshaped.Map(function(const Value: string; const Coords: TCoords): string
+                       begin
+                         Result := 'Old_' + IntToStr(Coords[0]);
+                       end);
+  Log('変更前:');
+  Log(Matrix1D_Reshaped.ToString);
+  Log('範囲情報: ' + Matrix1D_Reshaped.ToRangesString);
+
+  Matrix1D_Reshaped.ReshapeRange('0..4');
+  Log('変更後 (0..4):');
+  Log(Matrix1D_Reshaped.ToString);
+  Log('範囲情報: ' + Matrix1D_Reshaped.ToRangesString);
+  Log('');
+
+  // 5. ReshapeRange文字列テスト（2次元）
+  Log('5. ReshapeRange文字列テスト（2次元）:');
+  Matrix2D_Reshaped := TFlexArray<string>.Create([2, 3], 1);
+  Matrix2D_Reshaped.Map(function(const Value: string; const Coords: TCoords): string
+                       begin
+                         Result := Format('[%d,%d]', [Coords[0], Coords[1]]);
+                       end);
+  Log('変更前:');
+  Log(Matrix2D_Reshaped.ToString);
+  Log('範囲情報: ' + Matrix2D_Reshaped.ToRangesString);
+
+  Matrix2D_Reshaped.ReshapeRange('[ 0..1 , 0..2 ]');
+  Log('変更後 ([0..1,0..2]):');
+  Log(Matrix2D_Reshaped.ToString);
+  Log('範囲情報: ' + Matrix2D_Reshaped.ToRangesString);
+  Log('');
+
+  // 6. 複雑な範囲文字列テスト
+  Log('6. 複雑な範囲文字列テスト:');
+  ComplexMatrix := TFlexArray<string>.CreateFromRange(' [ -2 .. 2 , 0 .. 1 ] ');
+  ComplexMatrix.Map(function(const Value: string; const Coords: TCoords): string
+                   begin
+                     Result := Format('Neg_%d_%d', [Coords[0], Coords[1]]);
+                   end);
+  Log('ComplexMatrix ([-2..2,0..1]):');
+  Log(ComplexMatrix.ToString);
+  Log('範囲情報: ' + ComplexMatrix.ToRangesString);
+  Log('');
+
+  // 7. エラーハンドリングテスト（コメントアウトして実行しない）
+  Log('7. エラーハンドリングテスト（コメントアウト済み）:');
+  Log('  - 不正な形式: "1..2,3" → 例外発生');
+  Log('  - 範囲逆転: "5..1" → 例外発生');
+  Log('  - 空文字列: "" → 例外発生');
+  Log('');
+
+  Log('=== RangeStr文字列テスト完了 ===');
+end;
+
+procedure TestSumAllTypes;
+var
+  IntArray: TFlexArray<Integer>;
+  DblArray: TFlexArray<Double>;
+  StrArray: TFlexArray<string>;
+  SumResult: Integer;
+  DblSum: Double;
+  StrSum: string;
+begin
+  Log('=== Sumメソッドテスト ===');
+  Log('');
+  
+  // Integer型テスト
+  Log('--- Integer型テスト ---');
+  Log('テスト1: 基本的な整数配列');
+  IntArray := TFlexArray<Integer>.CreateFromArray([1, 2, 3, 4, 5]);
+  SumResult := IntArray.Sum;
+  Log('  配列: [1, 2, 3, 4, 5]');
+  Log('  期待値: 15, 実際値: ' + IntToStr(SumResult));
+  Log('');
+
+  Log('テスト2: 負数を含む配列');
+  IntArray := TFlexArray<Integer>.CreateFromArray([-1, 5, -3, 2], 1);
+  SumResult := IntArray.Sum;
+  Log('  配列: [-1, 5, -3, 2]');
+  Log('  期待値: 3, 実際値: ' + IntToStr(SumResult));
+  Log('');
+  
+  Log('テスト3: ゼロを含む配列');
+  IntArray := TFlexArray<Integer>.CreateFromArray([0, 10, 0, 5], 0);
+  SumResult := IntArray.Sum;
+  Log('  配列: [0, 10, 0, 5]');
+  Log('  期待値: 15, 実際値: ' + IntToStr(SumResult));
+  Log('');
+  
+  // Double型テスト
+  Log('--- Double型テスト ---');
+  Log('テスト1: 基本的な小数配列');
+  DblArray := TFlexArray<Double>.CreateFromArray([1.5, 2.3, 3.7, 4.1], 0);
+  DblSum := DblArray.Sum;
+  Log('  配列: [1.5, 2.3, 3.7, 4.1]');
+  Log('  期待値: 11.60, 実際値: ' + FormatFloat('0.00', DblSum));
+  Log('');
+
+  Log('テスト2: 負の小数を含む配列');
+  DblArray := TFlexArray<Double>.CreateFromArray([-1.2, 3.5, -2.8, 1.0]);
+  DblSum := DblArray.Sum;
+  Log('  配列: [-1.2, 3.5, -2.8, 1.0]');
+  Log('  期待値: 0.50, 実際値: ' + FormatFloat('0.00', DblSum));
+  Log('');
+
+  Log('テスト3: 非常に小さい値');
+  DblArray := TFlexArray<Double>.CreateFromArray([0.001, 0.002, 0.003]);
+  DblSum := DblArray.Sum;
+  Log('  配列: [0.001, 0.002, 0.003]');
+  Log('  期待値: 0.006000, 実際値: ' + FormatFloat('0.000000', DblSum));
+  Log('');
+  
+//  // String型テスト
+//  Log('--- String型テスト ---');
+//  Log('テスト1: 基本的な文字列配列');
+//  StrArray := TFlexArray<string>.CreateFromArray(['Hello', ' ', 'World', '!']);
+//  StrSum := StrArray.Sum;
+//  Log('  配列: ["Hello", " ", "World", "!"]');
+//  Log('  期待値: "Hello World!", 実際値: "' + StrSum + '"');
+//  Log('');
+
+//  Log('テスト2: 数字の文字列');
+//  StrArray := TFlexArray<string>.CreateFromArray(['1', '2', '3']);
+//  StrSum := StrArray.Sum;
+//  Log('  配列: ["1", "2", "3"]');
+//  Log('  期待値: "123", 実際値: "' + StrSum + '"');
+//  Log('');
+//
+//  Log('テスト3: 空文字列を含む配列');
+//  StrArray := TFlexArray<string>.CreateFromArray(['A', '', 'B', '', 'C']);
+//  StrSum := StrArray.Sum;
+//  Log('  配列: ["A", "", "B", "", "C"]');
+//  Log('  期待値: "ABC", 実際値: "' + StrSum + '"');
+//  Log('');
+
+  // 多次元配列テスト
+  Log('--- 多次元配列テスト ---');
+  Log('テスト1: 2次元Integer配列');
+  IntArray := TFlexArray<Integer>.CreateFromRange([[-1, 3], [1, 2]]);
+  IntArray.Map(SequentialNumber);
+  SumResult := IntArray.max;
+  Log(IntArray.ToString);
+  Log('  期待値: 10, 実際値: ' + IntToStr(SumResult));
+  Log('');
+  
+  Log('=== Sumメソッドテスト完了 ===');
+end;
+
 procedure TestUltimateChaosSlice;
 var
   Data4D, Data3D, Data2D, Data1D: TFlexArray<Integer>;
   i, j, k, l, expectedValue: Integer;
+  a: array of array of array of Integer;
 begin
+  a := [
+  {Page 0} [
+  [0, 1, 2],
+  [10, 11, 12],
+  [0, 1, 2],
+  [10, 11, 12],
+  [20, 21, 22]
+],
+  {Page 1} [
+  [100, 101, 102],
+  [110, 111, 112],
+  [100, 101, 102],
+  [110, 111, 112],
+  [120, 121, 122]
+]];
+
   log('--- カオス次元（Low=0,1混在）スライステスト開始 ---');
 
   // 1. 低下インデックスのバラエティを最大化
@@ -588,6 +887,7 @@ begin
   end;
 
   Log('--- テスト成功：カオスなインデックス設定でも連番を完全走破！ ---');
+
 end;
 
 //const
@@ -653,7 +953,7 @@ begin
 
   // 1. 2次元行列の準備
   Log('1. 2次元行列 (3x4) を準備:');
-  Matrix2D := TFlexArray<Integer>.CreateMatrix(3, 4, 1);
+  Matrix2D := TFlexArray<Integer>.Create([3, 4], 1);
   Matrix2D.Map(SequentialNumber);
   Log(Matrix2D.ToString);
   Log('');
@@ -711,7 +1011,7 @@ begin
 
   // 7. 1次元配列のChooseSliceテスト
   Log('7. 1次元配列のChooseSliceテスト:');
-  var Vec1D := TFlexArray<Integer>.Create(5, 1);
+  var Vec1D := TFlexArray<Integer>.Create([5], 1);
   Vec1D.Map(SequentialNumber);
   Log('  元の1次元配列:');
   Log(Vec1D.ToString);
@@ -807,7 +1107,10 @@ begin
 //   TestUltimateChaosSlice;
 //  TestTranspose;
 //  TestChooseSlice;  // ChooseSlice/ChooseRow/ChooseCol テスト
-  TestConcat;
+//  TestConcat;
+//  TestAppendArrayStrings;  // AppendArray文字列テスト
+//  TestRangeStringOperations;  // RangeStr文字列テスト
+  TestSumAllTypes;  // Sumメソッドテスト
 end;
 
 end.
