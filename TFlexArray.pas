@@ -5,7 +5,8 @@ interface
 uses
   System.SysUtils, System.Generics.Collections, System.Math,
   System.Rtti,    // TValue のため
-  System.TypInfo; // tkString などの型判定（TValue.Kind）のため
+  System.TypInfo, // tkString などの型判定（TValue.Kind）のため
+  System.Generics.Defaults; // IComparer のため
 
 type
   TFlexRange = TArray<Integer>;  // [Low, High] のペア
@@ -1543,7 +1544,7 @@ begin
 
     Result := TValue.FromVariant(Value).AsType<T>;
   except
-    raise Exception.Create('Sum: この型では+演算子が使用できません');
+    raise Exception.Create('Sum: この型は加算ができません');
   end;
 end;
 
@@ -1555,18 +1556,23 @@ end;
 function TFlexArray<T>.Max: T;
 var
   i: Integer;
-  Value: Variant;
+  Comparer: IComparer<T>;
 begin
+  // 型 T に最適な比較器を取得（一度だけ実行）
+  Comparer := TComparer<T>.Default;
+
+  // 最初の要素を暫定の最大値とする
+  Result := Self.Elements[0];
+
   try
-    Value := TValue.From<T>(Self.Elements[0]).AsVariant;
     for i := 1 to FTotalSize - 1 do
     begin
-      if TValue.From<T>(Self.Elements[i]).AsVariant > Value then
-        Value := TValue.From<T>(Self.Elements[i]).AsVariant;
+      // Comparer.Compare(A, B) は A < B なら 負の値、A = B なら 0、A > B なら 正の値を返す
+      if Comparer.Compare(Self.Elements[i], Result) > 0 then
+        Result := Self.Elements[i];
     end;
-    Result := TValue.FromVariant(Value).AsType<T>;
   except
-    raise Exception.Create('Max: この型では>演算子が使用できません');
+    raise Exception.Create('Max: この型は比較ができません');
   end;
 end;
 
@@ -1578,18 +1584,23 @@ end;
 function TFlexArray<T>.Min: T;
 var
   i: Integer;
-  Value: Variant;
+  Comparer: IComparer<T>;
 begin
+  // 型 T に最適な比較器を取得（一度だけ実行）
+  Comparer := TComparer<T>.Default;
+
+  // 最初の要素を暫定の最小値とする
+  Result := Self.Elements[0];
+
   try
-    Value := TValue.From<T>(Self.Elements[0]).AsVariant;
     for i := 1 to FTotalSize - 1 do
     begin
-      if TValue.From<T>(Self.Elements[i]).AsVariant < Value then
-        Value := TValue.From<T>(Self.Elements[i]).AsVariant;
+      // Comparer.Compare(A, B) は A < B なら 負の値、A = B なら 0、A > B なら 正の値を返す
+      if Comparer.Compare(Self.Elements[i], Result) < 0 then
+        Result := Self.Elements[i];
     end;
-    Result := TValue.FromVariant(Value).AsType<T>;
   except
-    raise Exception.Create('Min: この型では<演算子が使用できません');
+    raise Exception.Create('Min: この型は比較ができません');
   end;
 end;
 
