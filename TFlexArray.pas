@@ -1088,7 +1088,7 @@ function TFlexArray<T>.ConcatEqualDim(const Another: TFlexArray<T>; TargetDim: I
 var
   DimIdx: Integer;
   NewRanges: TFlexRanges;
-  ResultCoords, AnotherCoords: TCoords;
+  ResultCoords: TCoords;
   i, d: Integer;
   L, H: Integer;
 begin
@@ -1120,7 +1120,6 @@ begin
   Result := TFlexArray<T>.CreateFromRange(NewRanges);
 
   // AnotherCoordsの設定
-  SetLength(AnotherCoords, Another.DimensionCount);
   Result.InitializeCoords(ResultCoords);
 
   for i := 0 to Result.FTotalSize - 1 do
@@ -1132,17 +1131,11 @@ begin
     end
     else
     begin
-      // Anotherの範囲 - 座標を変換
-      for d := 0 to Another.DimensionCount - 1 do
-      begin
-        if d = DimIdx then
-          AnotherCoords[d] := ResultCoords[d] - Self.FDims[DimIdx].Len
-        else
-          AnotherCoords[d] := ResultCoords[d];
-      end;
-      Result.Elements[i] := Another.Elements[Another.GetOffset(AnotherCoords)];
+      // Anotherの範囲 - 座標を移動
+      ResultCoords[DimIdx] := ResultCoords[DimIdx] - Self.FDims[DimIdx].Len;
+      Result.Elements[i] := Another.Elements[Another.GetOffset(ResultCoords)];
+      ResultCoords[DimIdx] := ResultCoords[DimIdx] + Self.FDims[DimIdx].Len;
     end;
-
     Result.IncCoords(ResultCoords);
   end;
 end;
