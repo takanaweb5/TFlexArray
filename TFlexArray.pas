@@ -104,9 +104,8 @@ type
     function High: Integer; overload; // 1D
     function Low(Dim: Integer): Integer; overload; // nD
     function High(Dim: Integer): Integer; overload; // nD
-{$IFDEF FLEXARRAY_ENABLE_LEN}
     function Len(Dim: Integer): NativeInt;
-{$ENDIF}
+
     property Items[const Coords: array of Integer]: T read GetValue write SetValue; default;
     property Elements[Index: NativeInt]: T read GetElement write SetElement;
     property DimensionCount: Integer read GetDimensionCount;
@@ -126,9 +125,9 @@ type
     function Transpose(const NewDims: array of Integer): TFlexArray<T>; overload; // nD
     function Transpose(): TFlexArray<T>; overload; // 2D
 
-    function ChooseSlice(Dim: Integer; Index: Integer): TFlexArray<T>; overload;  // nD
-    function ChooseRow(RowIndex: Integer): TFlexArray<T>;  // 2D
-    function ChooseCol(ColIndex: Integer): TFlexArray<T>;  // 2D
+    function SliceDim(Dim: Integer; Index: Integer): TFlexArray<T>; overload;  // nD
+    function SliceRow(RowIndex: Integer): TFlexArray<T>;  // 2D
+    function SliceCol(ColIndex: Integer): TFlexArray<T>;  // 2D
 
     function Concat(const Another: TFlexArray<T>; TargetDim: Integer): TFlexArray<T>;  // nD
     function HStack(const Another: TFlexArray<T>): TFlexArray<T>;  // 2D
@@ -599,7 +598,7 @@ end;
 // [引数] 次元番号, 取得インデックス
 // [戻値] スライス配列（元の次元数より1次元少ない配列が生成されます）
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.ChooseSlice(Dim: Integer; Index: Integer): TFlexArray<T>;
+function TFlexArray<T>.SliceDim(Dim: Integer; Index: Integer): TFlexArray<T>;
 var
   i, j, d: Integer;
   NewRanges: TFlexRanges;
@@ -652,10 +651,10 @@ end;
 // [引数] 行インデックス
 // [戻値] 行の1次元配列
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.ChooseRow(RowIndex: Integer): TFlexArray<T>;
+function TFlexArray<T>.SliceRow(RowIndex: Integer): TFlexArray<T>;
 begin
   CheckDimension(2);
-  Result := ChooseSlice(1, RowIndex);
+  Result := SliceDim(1, RowIndex);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -663,10 +662,10 @@ end;
 // [引数] 列インデックス
 // [戻値] 列の1次元配列
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.ChooseCol(ColIndex: Integer): TFlexArray<T>;
+function TFlexArray<T>.SliceCol(ColIndex: Integer): TFlexArray<T>;
 begin
   CheckDimension(2);
-  Result := ChooseSlice(2, ColIndex);
+  Result := SliceDim(2, ColIndex);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -802,8 +801,8 @@ begin
   begin
     case Self.DimensionCount of
       1: Rows[i] := ValueToStr(Self[[r]]);
-      2: Rows[i] := ChooseRow(r).ToString;
-      3: Rows[i] := Format('{Page %d}' + ' %s', [r, ChooseSlice(1, r).ToString]);
+      2: Rows[i] := SliceRow(r).ToString;
+      3: Rows[i] := Format('{Page %d}' + ' %s', [r, SliceDim(1, r).ToString]);
     end;
     Inc(i);
   end;
@@ -949,7 +948,6 @@ begin
   Result := Transpose([2, 1]);
 end;
 
-{$IFDEF FLEXARRAY_ENABLE_LEN}
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 指定次元の配列サイズを返す
 // [引数] 次元番号
@@ -960,7 +958,6 @@ function TFlexArray<T>.Len(Dim: Integer): NativeInt;
 begin
   Result := FDims.Items[Dim].Len;
 end;
-{$ENDIF}
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 1次元配列の最小インデックスを取得
