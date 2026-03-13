@@ -92,8 +92,6 @@ type
     function GetEnumerator: TFlexArrayEnumerator<T>;
 
   public
-    procedure PromoteDimension(TargetDim: Integer);
-    procedure DemoteDimension(TargetDim: Integer);
     constructor Create(const Shapes: array of Integer; BaseIndex: Integer); overload; // nD
     constructor CreateFromRange(const Range: TFlexRange); overload; // 1D
     constructor CreateFromRange(const Ranges: TFlexRanges); overload; // nD
@@ -113,16 +111,19 @@ type
     property DimensionCount: Integer read GetDimensionCount;
     property TotalSize: NativeInt read FTotalSize;
 
-    procedure NormalizeToBaseIndex(BaseIndex: Integer);
     procedure Reshape(const Shapes: array of Integer; BaseIndex: Integer);
     procedure ReshapeVector(BaseIndex: Integer); // 1D
     procedure ReshapeRange(const Range: TFlexRange); overload; // 1D
     procedure ReshapeRange(const Ranges: TFlexRanges); overload; // nD
     procedure ReshapeRange(const RangeStr: string); overload;
+    procedure NormalizeToBaseIndex(BaseIndex: Integer);
 
     function ToVector(): TArray<T>;
     function ToString(): string;
     function ToRangesString(): string;
+
+    procedure PromoteDimension(TargetDim: Integer);
+    procedure DemoteDimension(TargetDim: Integer);
 
     function SliceDim(Dim: Integer; Index: Integer): TFlexArray<T>; overload;  // nD
     function SliceDimRange(Dim: Integer; const Range: TFlexRange): TFlexArray<T>; overload;  // nD
@@ -379,12 +380,10 @@ end;
 constructor TFlexArray<T>.CreateFromFlexArray(const Src: TFlexArray<T>);
 begin
   // 構造情報をコピー
-  SetLength(FDims, System.Length(Src.FDims));
-  TArray.Copy<TFlexDimension>(Src.FDims, FDims, System.Length(Src.FDims));
+  FDims := Copy(Src.FDims);
 
   FTotalSize := Src.FTotalSize;
-  SetLength(FData, FTotalSize);
-  TArray.Copy<T>(Src.FData, FData, FTotalSize);
+  FData := Copy(Src.FData);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -402,8 +401,7 @@ begin
   InitializeDimensions([[L, H]]);
 
   // データをコピーして実体化
-  SetLength(FData, FTotalSize);
-  TArray.Copy<T>(Src, FData, FTotalSize);
+  FData := Copy(Src);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -763,8 +761,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.ToVector(): TArray<T>;
 begin
-  SetLength(Result, FTotalSize);
-  TArray.Copy<T>(FData, Result, FTotalSize);
+  Result := Copy(FData);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -959,7 +956,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 指定次元をスライスして取得
 // [引数] 次元番号, 取得インデックス
-// [戻値] スライス配列（元の次元数より1次元少ない配列が生成されます）
+// [戻値] スライス配列（元の次元数より1次元少ない配列を生成）
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.SliceDim(Dim: Integer; Index: Integer): TFlexArray<T>;
 begin
@@ -968,7 +965,7 @@ begin
 
   Result := SliceDimIndexes(Dim, [Index]);
 
-  // 2. DemoteDimensionで次元を削除
+  // 次元を削除
   Result.DemoteDimension(Dim);
 end;
 
@@ -1055,7 +1052,7 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
-// [概要] 指定次元にサイズ1の次元を挿入して次元数を増やす（破壊系ヘルパー）
+// [概要] 指定次元にサイズ1の次元を挿入して次元数を増やす
 // [引数] TargetDim: 挿入する次元番号(1-based)
 // [戻値] なし
 // [使用例]
@@ -1438,7 +1435,7 @@ begin
 
   Result := TFlexArray<T>.CreateFromRange(NewRanges);
   Result.InitializeCoords(ResultCoords);
-  PrevCoord := Result.FDims[DimIdx].High + 1; // 初期値は最大Index+1
+  PrevCoord := system.High(Integer); // 初期値は最大値
 
   for i := 0 to Result.FTotalSize - 1 do
   begin
