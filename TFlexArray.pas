@@ -87,16 +87,14 @@ type
     procedure IncCoords(var Coords: TCoords);
     function ConcatEqualDim(const Another: TFlexArray<T>; TargetDim: Integer): TFlexArray<T>;
     function GetCompatibleBaseIndex(const Another: TFlexArray<T>): Integer;
-    procedure PromoteDimension(TargetDim: Integer);
-    procedure DemoteDimension(TargetDim: Integer);
     function RangesStringToRanges(const RangeStr: string): TFlexRanges;
     function SliceDimIndexesCore(Dim: Integer; const Indexes: TArray<Integer>): TFlexArray<T>; overload;
     function SliceDimIndexesCore(Dim: Integer; const Indexes: TArray<Integer>; const Another: TFlexArray<T>; Index: Integer): TFlexArray<T>; overload;
-    function SliceDimIndexes(Dim: Integer; const Indexes: TArray<Integer>): TFlexArray<T>; overload;
-    function SliceDimIndexes(Dim: Integer; const Indexes: TArray<Integer>; BaseIndex: Integer): TFlexArray<T>; overload;
     function GetEnumerator: TFlexArrayEnumerator<T>;
 
   public
+    procedure PromoteDimension(TargetDim: Integer);
+    procedure DemoteDimension(TargetDim: Integer);
     constructor Create(const Shapes: array of Integer; BaseIndex: Integer); overload; // nD
     constructor CreateFromRange(const Range: TFlexRange); overload; // 1D
     constructor CreateFromRange(const Ranges: TFlexRanges); overload; // nD
@@ -131,6 +129,8 @@ type
     function SliceDimRange(Dim: Integer; const Range: TFlexRange): TFlexArray<T>; overload;  // nD
     function SliceRow(RowIndex: Integer): TFlexArray<T>;  // 2D
     function SliceCol(ColIndex: Integer): TFlexArray<T>;  // 2D
+    function SliceDimIndexes(Dim: Integer; const Indexes: TArray<Integer>): TFlexArray<T>; overload;
+    function SliceDimIndexes(Dim: Integer; const Indexes: TArray<Integer>; BaseIndex: Integer): TFlexArray<T>; overload;
 
     function Transpose(const NewDims: array of Integer): TFlexArray<T>; overload; // nD
     function Transpose(): TFlexArray<T>; overload; // 2D
@@ -967,7 +967,7 @@ begin
   if Self.DimensionCount = 1 then
     raise Exception.Create('1次元配列にはChooseSlice(Dim, Index)は使用できません。ChooseSlice(Index)を使用してください。');
 
-  Result := SliceDimIndexes(Dim, [Index, Index]);
+  Result := SliceDimIndexes(Dim, [Index]);
 
   // 2. DemoteDimensionで次元を削除
   Result.DemoteDimension(Dim);
@@ -1720,7 +1720,7 @@ var
   dmy: TFlexArray<T>;
 begin
   dmy.FTotalSize := -1;  // マーカー値（抽出専用モード）
-  SliceDimIndexesCore(Dim, Indexes, dmy, 0);
+  Result := SliceDimIndexesCore(Dim, Indexes, dmy, 0);
 end;
 function TFlexArray<T>.SliceDimIndexesCore(Dim: Integer; const Indexes: TArray<Integer>;
   const Another: TFlexArray<T>; Index: Integer): TFlexArray<T>;
@@ -1731,22 +1731,24 @@ var
   DimIdx: Integer;
   bak: Integer;
   AnotherLow, AnotherHigh: Integer;
-  SelfIndexes, AnotherIndexes: TArray<Integer>;
+  AnotherIndexes: TArray<Integer>;
+  PrevCoord: Integer;
+  IsInAnotherRange: Boolean;
 begin
   // 1-based to 0-based
   DimIdx := Dim - 1;
 
-  // Self用インデックス配列（既存のIndexes）
-  SelfIndexes := Copy(Indexes);
-
-  // Another用インデックス配列を生成
   if (Another.FTotalSize > 0) then
   begin
     SetLength(AnotherIndexes, Another.Len(Dim));
     for i := 0 to system.High(AnotherIndexes) do
-      AnotherIndexes[i] := Index + i;
+      AnotherIndexes[i] := Another.FDims[DimIdx].Low + i;
+
+    // Anotherの範囲を設定
+    AnotherLow := Index;
+    AnotherHigh := Index + Another.Len(Dim) - 1;
   end;
-  
+
   // NewRangesの計算
   SetLength(NewRanges, DimensionCount);
   for d := 0 to DimensionCount - 1 do
@@ -1767,37 +1769,40 @@ begin
 
   Result := TFlexArray<T>.CreateFromRange(NewRanges);
   Result.InitializeCoords(ResultCoords);
-
-  d1 := -1;
-  d2 := -1;
-  
-  // Anotherの範囲を計算
-  if (Another.FTotalSize > 0) then
-  begin
-    AnotherLow := Index;
-    AnotherHigh := Index + Another.Len(Dim) - 1;
-  end;
+  PrevCoord := Result.FDims[DimIdx].High + 1; // 初期値は最大Index+1
 
   for i := 0 to Result.FTotalSize - 1 do
   begin
     bak := ResultCoords[DimIdx];
-    
-    // Anotherの範囲内か判定
-    if (Another.FTotalSize > 0) and (ResultCoords[DimIdx] >= AnotherLow) and (ResultCoords[DimIdx] <= AnotherHigh) then
+
+    // true:Anotherの範囲、false:selfの範囲
+    IsInAnotherRange := (Another.FTotalSize > 0) and (ResultCoords[DimIdx] >= AnotherLow) and (ResultCoords[DimIdx] <= AnotherHigh);
+
+    if ResultCoords[DimIdx] < PrevCoord then
     begin
-      // Anotherの範囲内
-      Inc(d2);
+      d1 := -1;
+      d2 := -1;
+    end;
+    if ResultCoords[DimIdx] <> PrevCoord then
+    begin
+      if IsInAnotherRange then
+        Inc(d2)
+      else
+        Inc(d1);
+      PrevCoord := ResultCoords[DimIdx];
+    end;
+
+    if IsInAnotherRange then
+    begin
       ResultCoords[DimIdx] := AnotherIndexes[d2];
       Result.Elements[i] := Another.Elements[Another.GetOffset(ResultCoords)];
     end
     else
     begin
-      // Selfの範囲内
-      Inc(d1);
-      ResultCoords[DimIdx] := SelfIndexes[d1];
+      ResultCoords[DimIdx] := Indexes[d1];
       Result.Elements[i] := Self.Elements[Self.GetOffset(ResultCoords)];
     end;
-    
+
     ResultCoords[DimIdx] := bak;
     Result.IncCoords(ResultCoords);
   end;
