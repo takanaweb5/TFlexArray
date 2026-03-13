@@ -85,7 +85,6 @@ type
     procedure CheckViewMode;
     procedure InitializeCoords(var Coords: TCoords);
     procedure IncCoords(var Coords: TCoords);
-    function ConcatEqualDim(const Another: TFlexArray<T>; TargetDim: Integer): TFlexArray<T>;
     function GetCompatibleBaseIndex(const Another: TFlexArray<T>): Integer;
     function RangesStringToRanges(const RangeStr: string): TFlexRanges;
     function SliceDimIndexesCore(Dim: Integer; const Indexes: TArray<Integer>): TFlexArray<T>; overload;
@@ -1056,39 +1055,6 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
-// [概要] 同一次元配列の結合
-// [引数] 結合対象の配列, 結合する次元
-// [戻値] 結合結果の配列
-//////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.ConcatEqualDim(const Another: TFlexArray<T>; TargetDim: Integer): TFlexArray<T>;
-var
-  AllIndexes: TArray<Integer>;
-  i: Integer;
-  DimIdx: Integer;
-  d: Integer;
-begin
-  // 1-based to 0-based
-  DimIdx := TargetDim - 1;
-
-  // 次元のサイズチェック
-  for d := 0 to Self.DimensionCount - 1 do
-  begin
-    if d <> DimIdx then
-    begin
-      if Self.FDims[d].Len <> Another.FDims[d].Len then
-        raise Exception.CreateFmt('ConcatEqualDim: 次元%dのサイズが一致しません。Self=%d, Another=%d',
-          [d+1, Self.FDims[d].Len, Another.FDims[d].Len]);
-    end;
-  end;
-
-  // Selfの全インデックスを生成
-  SetLength(AllIndexes, Self.Len(TargetDim));
-  for i := 0 to System.High(AllIndexes) do
-    AllIndexes[i] := Self.Low(TargetDim) + i;
-
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
 // [概要] 指定次元にサイズ1の次元を挿入して次元数を増やす（破壊系ヘルパー）
 // [引数] TargetDim: 挿入する次元番号(1-based)
 // [戻値] なし
@@ -1205,7 +1171,7 @@ begin
     AnotherReady.PromoteDimension(TargetDim);
 
   // 同一次元結合を実行
-  Result := SelfReady.ConcatEqualDim(AnotherReady, TargetDim);
+  Result := SelfReady.InsertDim(TargetDim, SelfReady.High(TargetDim) + 1, AnotherReady);
 
   // 元のベースインデックスに戻す
   if BaseIndex <> 1 then
@@ -1276,6 +1242,239 @@ function TFlexArray<T>.AppendArray(const Value: T): TFlexArray<T>;
 begin
   CheckDimension(1);
   Result := Self.AppendArray([Value]);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 指定次元の指定位置に配列を挿入
+// [引数] Dim: 次元番号(1-based), Index: 挿入位置, Items: 挿入する配列
+// [戻値] 挿入後の新しい配列
+// [使用例]
+//   3D配列[2,3,4]に次元1の位置2で[1,4]配列を挿入 → [3,3,4]配列
+//   2D配列[3,4]に行2で[1,4]配列を挿入 → [4,4]配列
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.InsertDim(Dim: Integer; Index: Integer; const Items: TFlexArray<T>): TFlexArray<T>;
+var
+  Indexes: TArray<Integer>;
+  i: Integer;
+begin
+  // パラメータ検証
+  if (Dim < 1) or (Dim > DimensionCount) then
+    raise Exception.CreateFmt('InsertDim: 次元番号が範囲外です。Dim=%d, 次元数=%d', [Dim, DimensionCount]);
+
+  if (Index < Low(Dim)) or (Index > High(Dim) + 1) then
+    raise Exception.CreateFmt('InsertDim: 挿入位置が範囲外です。Index=%d, 範囲=%d..%d', [Index, Low(Dim), High(Dim) + 1]);
+
+  // Itemsの次元数チェック（同じ次元数が必要）
+  if Items.DimensionCount <> DimensionCount then
+    raise Exception.CreateFmt('InsertDim: 挿入配列の次元数が不正です。期待=%d, 実際=%d', [DimensionCount, Items.DimensionCount]);
+
+  SetLength(Indexes, Self.Len(Dim));
+  for i := 0 to System.High(Indexes) do
+    Indexes[i] := Self.Low(Dim) + i;
+
+  Result := SliceDimIndexesCore(Dim, Indexes, Items, Index);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 指定次元の範囲を削除
+// [引数] Dim: 次元番号(1-based), Range: 削除範囲[Low, High]
+// [戻値] 削除後の新しい配列
+// [使用例]
+//   Result := Matrix.DeleteDim(2, [2, 5]); // 2〜5列目を削除
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.DeleteDim(Dim: Integer; const Range: TFlexRange): TFlexArray<T>;
+var
+  Indexes: TArray<Integer>;
+  i, d: Integer;
+begin
+  // パラメータ検証
+  if (Dim < 1) or (Dim > DimensionCount) then
+    raise Exception.CreateFmt('DeleteDim: 次元番号が範囲外です。Dim=%d, 次元数=%d', [Dim, DimensionCount]);
+
+  if (Range.Low < Low(Dim)) or (Range.High > High(Dim)) or (Range.Low > Range.High) then
+    raise Exception.CreateFmt('DeleteDim: 削除範囲が不正です。Range=[%d,%d], 範囲=%d..%d', [Range.Low, Range.High, Low(Dim), High(Dim)]);
+
+  SetLength(Indexes, Self.Len(Dim) - Range.Len);
+  d := 0;
+
+  // 前半部のインデックスを収集
+  for i := Self.Low(Dim) to Range.Low - 1 do
+  begin
+    Indexes[d] := i;
+    Inc(d);
+  end;
+
+  // 後半部のインデックスを収集
+  for i := Range.High + 1 to Self.High(Dim) do
+  begin
+    Indexes[d] := i;
+    Inc(d);
+  end;
+
+  Result := SliceDimIndexes(Dim, Indexes);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 指定次元の範囲を抽出
+// [引数] Dim: 次元番号(1-based), Range: 抽出範囲[Low, High]
+// [戻値] 抽出後の新しい配列
+// [使用例]
+//   Result := Matrix.SliceDimRange(2, [2, 5]); // 2〜5列目を抽出
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.SliceDimRange(Dim: Integer; const Range: TFlexRange): TFlexArray<T>;
+var
+  Indexes: TArray<Integer>;
+  i: Integer;
+begin
+  // パラメータ検証
+  if (Dim < 1) or (Dim > DimensionCount) then
+    raise Exception.CreateFmt('SliceDimRange: 次元番号が範囲外です。Dim=%d, 次元数=%d', [Dim, DimensionCount]);
+
+  if (Range.Low < Low(Dim)) or (Range.High > High(Dim)) or (Range.Low > Range.High) then
+    raise Exception.CreateFmt('SliceDimRange: 抽出範囲が不正です。Range=[%d,%d], 範囲=%d..%d', [Range.Low, Range.High, Low(Dim), High(Dim)]);
+
+  SetLength(Indexes, Range.Len);
+  for i := 0 to system.High(Indexes) do
+    Indexes[i] := Range.Low + i;
+
+  Result := SliceDimIndexes(Dim, Indexes);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 指定次元のIndexの配列で指定した範囲を抽出
+// [引数] Dim: 次元番号(1-based), Indexes: 抽出するIndexの配列, BaseIndex: 基準インデックス
+// [戻値] 抽出後の新しい配列
+// [備考] BaseIndexの省略時はselfの該当次元のbaseを使用
+// [使用例]
+//   Result := Matrix.SliceDimIndexes(2, [1, 3, 5]);    // 1,3,5列目を抽出
+//   Result := Matrix.SliceDimIndexes(2, [1, 3, 5], 1); // 1,3,5列目を抽出
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.SliceDimIndexes(Dim: Integer; const Indexes: TArray<Integer>): TFlexArray<T>;
+begin
+  Result := SliceDimIndexes(Dim, Indexes, Self.FDims[Dim - 1].Low);
+end;
+function TFlexArray<T>.SliceDimIndexes(Dim: Integer; const Indexes: TArray<Integer>; BaseIndex: Integer): TFlexArray<T>;
+var
+  NewRanges: TFlexRanges;
+  d: Integer;
+begin
+  Result := SliceDimIndexesCore(Dim, Indexes);
+
+  // 指定次元をBaseIndexに合わせてreshape
+  SetLength(NewRanges, Result.DimensionCount);
+  for d := 0 to Result.DimensionCount - 1 do
+  begin
+    if d = Dim - 1 then
+      // 指定次元のみBaseIndexを基準に
+      NewRanges[d] := [BaseIndex, BaseIndex + Length(Indexes) - 1]
+    else
+      // 他の次元は元のまま
+      NewRanges[d] := [Result.FDims[d].Low, Result.FDims[d].High];
+  end;
+
+  Result.ReshapeRange(NewRanges);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 指定次元のIndexの配列で指定した範囲を抽出または挿入
+// [引数] Dim: 次元番号(1-based), Indexes: 抽出するIndexの配列,
+//        Another: 挿入する配列(省略時は抽出のみ), Index: 挿入開始位置
+// [戻値] 抽出後の新しい配列
+// [使用例]
+//   Result := Matrix.SliceDimIndexesCore(2, [1, 3, 5]);           // 1,3,5列目を抽出
+//   Result := Matrix.SliceDimIndexesCore(2, [1, 2, 3], Insert, 2); // 2列目からInsertを挿入
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.SliceDimIndexesCore(Dim: Integer; const Indexes: TArray<Integer>): TFlexArray<T>;
+var
+  dmy: TFlexArray<T>;
+begin
+  dmy.FTotalSize := -1;  // マーカー値（抽出専用モード）
+  Result := SliceDimIndexesCore(Dim, Indexes, dmy, 0);
+end;
+function TFlexArray<T>.SliceDimIndexesCore(Dim: Integer; const Indexes: TArray<Integer>;
+  const Another: TFlexArray<T>; Index: Integer): TFlexArray<T>;
+var
+  i, d, d1, d2: Integer;
+  NewRanges: TFlexRanges;
+  ResultCoords: TCoords;
+  DimIdx: Integer;
+  bak: Integer;
+  AnotherLow, AnotherHigh: Integer;
+  AnotherIndexes: TArray<Integer>;
+  PrevCoord: Integer;
+  IsInAnotherRange: Boolean;
+begin
+  // 1-based to 0-based
+  DimIdx := Dim - 1;
+
+  if (Another.FTotalSize > 0) then
+  begin
+    SetLength(AnotherIndexes, Another.Len(Dim));
+    for i := 0 to system.High(AnotherIndexes) do
+      AnotherIndexes[i] := Another.FDims[DimIdx].Low + i;
+
+    // Anotherの範囲を設定
+    AnotherLow := Index;
+    AnotherHigh := Index + Another.Len(Dim) - 1;
+  end;
+
+  // NewRangesの計算
+  SetLength(NewRanges, DimensionCount);
+  for d := 0 to DimensionCount - 1 do
+  begin
+    if d = DimIdx then
+    begin
+      if (Another.FTotalSize > 0) then
+        // 結果の次元サイズ = Indexesの数 + Anotherのサイズ
+        NewRanges[d] := [Self.FDims[d].Low, Self.FDims[d].Low + Length(Indexes) + Another.Len(Dim) - 1]
+      else
+        // 抽出する次元はIndexesの範囲に合わせる
+        NewRanges[d] := [Self.FDims[d].Low, Self.FDims[d].Low + Length(Indexes) - 1];
+    end
+    else
+      // 他の次元は元の配列の範囲を維持
+      NewRanges[d] := [FDims[d].Low, FDims[d].High];
+  end;
+
+  Result := TFlexArray<T>.CreateFromRange(NewRanges);
+  Result.InitializeCoords(ResultCoords);
+  PrevCoord := Result.FDims[DimIdx].High + 1; // 初期値は最大Index+1
+
+  for i := 0 to Result.FTotalSize - 1 do
+  begin
+    bak := ResultCoords[DimIdx];
+
+    // true:Anotherの範囲、false:selfの範囲
+    IsInAnotherRange := (Another.FTotalSize > 0) and (ResultCoords[DimIdx] >= AnotherLow) and (ResultCoords[DimIdx] <= AnotherHigh);
+
+    if ResultCoords[DimIdx] < PrevCoord then
+    begin
+      d1 := -1;
+      d2 := -1;
+    end;
+    if ResultCoords[DimIdx] <> PrevCoord then
+    begin
+      if IsInAnotherRange then
+        Inc(d2)
+      else
+        Inc(d1);
+      PrevCoord := ResultCoords[DimIdx];
+    end;
+
+    if IsInAnotherRange then
+    begin
+      ResultCoords[DimIdx] := AnotherIndexes[d2];
+      Result.Elements[i] := Another.Elements[Another.GetOffset(ResultCoords)];
+    end
+    else
+    begin
+      ResultCoords[DimIdx] := Indexes[d1];
+      Result.Elements[i] := Self.Elements[Self.GetOffset(ResultCoords)];
+    end;
+
+    ResultCoords[DimIdx] := bak;
+    Result.IncCoords(ResultCoords);
+  end;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1572,239 +1771,6 @@ begin
     end;
   except
     raise Exception.Create('Min: この型は比較ができません');
-  end;
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
-// [概要] 指定次元の指定位置に配列を挿入
-// [引数] Dim: 次元番号(1-based), Index: 挿入位置, Items: 挿入する配列
-// [戻値] 挿入後の新しい配列
-// [使用例]
-//   3D配列[2,3,4]に次元1の位置2で[1,4]配列を挿入 → [3,3,4]配列
-//   2D配列[3,4]に行2で[1,4]配列を挿入 → [4,4]配列
-//////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.InsertDim(Dim: Integer; Index: Integer; const Items: TFlexArray<T>): TFlexArray<T>;
-var
-  Indexes: TArray<Integer>;
-  i: Integer;
-begin
-  // パラメータ検証
-  if (Dim < 1) or (Dim > DimensionCount) then
-    raise Exception.CreateFmt('InsertDim: 次元番号が範囲外です。Dim=%d, 次元数=%d', [Dim, DimensionCount]);
-
-  if (Index < Low(Dim)) or (Index > High(Dim) + 1) then
-    raise Exception.CreateFmt('InsertDim: 挿入位置が範囲外です。Index=%d, 範囲=%d..%d', [Index, Low(Dim), High(Dim) + 1]);
-
-  // Itemsの次元数チェック（同じ次元数が必要）
-  if Items.DimensionCount <> DimensionCount then
-    raise Exception.CreateFmt('InsertDim: 挿入配列の次元数が不正です。期待=%d, 実際=%d', [DimensionCount, Items.DimensionCount]);
-
-  SetLength(Indexes, Self.Len(Dim));
-  for i := 0 to System.High(Indexes) do
-    Indexes[i] := Self.Low(Dim) + i;
-
-  Result := SliceDimIndexesCore(Dim, Indexes, Items, Index);
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
-// [概要] 指定次元の範囲を削除
-// [引数] Dim: 次元番号(1-based), Range: 削除範囲[Low, High]
-// [戻値] 削除後の新しい配列
-// [使用例]
-//   Result := Matrix.DeleteDim(2, [2, 5]); // 2〜5列目を削除
-//////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.DeleteDim(Dim: Integer; const Range: TFlexRange): TFlexArray<T>;
-var
-  Indexes: TArray<Integer>;
-  i, d: Integer;
-begin
-  // パラメータ検証
-  if (Dim < 1) or (Dim > DimensionCount) then
-    raise Exception.CreateFmt('DeleteDim: 次元番号が範囲外です。Dim=%d, 次元数=%d', [Dim, DimensionCount]);
-
-  if (Range.Low < Low(Dim)) or (Range.High > High(Dim)) or (Range.Low > Range.High) then
-    raise Exception.CreateFmt('DeleteDim: 削除範囲が不正です。Range=[%d,%d], 範囲=%d..%d', [Range.Low, Range.High, Low(Dim), High(Dim)]);
-
-  SetLength(Indexes, Self.Len(Dim) - Range.Len);
-  d := 0;
-
-  // 前半部のインデックスを収集
-  for i := Self.Low(Dim) to Range.Low - 1 do
-  begin
-    Indexes[d] := i;
-    Inc(d);
-  end;
-
-  // 後半部のインデックスを収集
-  for i := Range.High + 1 to Self.High(Dim) do
-  begin
-    Indexes[d] := i;
-    Inc(d);
-  end;
-
-  Result := SliceDimIndexes(Dim, Indexes);
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
-// [概要] 指定次元の範囲を抽出
-// [引数] Dim: 次元番号(1-based), Range: 抽出範囲[Low, High]
-// [戻値] 抽出後の新しい配列
-// [使用例]
-//   Result := Matrix.SliceDimRange(2, [2, 5]); // 2〜5列目を抽出
-//////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.SliceDimRange(Dim: Integer; const Range: TFlexRange): TFlexArray<T>;
-var
-  Indexes: TArray<Integer>;
-  i: Integer;
-begin
-  // パラメータ検証
-  if (Dim < 1) or (Dim > DimensionCount) then
-    raise Exception.CreateFmt('SliceDimRange: 次元番号が範囲外です。Dim=%d, 次元数=%d', [Dim, DimensionCount]);
-
-  if (Range.Low < Low(Dim)) or (Range.High > High(Dim)) or (Range.Low > Range.High) then
-    raise Exception.CreateFmt('SliceDimRange: 抽出範囲が不正です。Range=[%d,%d], 範囲=%d..%d', [Range.Low, Range.High, Low(Dim), High(Dim)]);
-
-  SetLength(Indexes, Range.Len);
-  for i := 0 to system.High(Indexes) do
-    Indexes[i] := Range.Low + i;
-
-  Result := SliceDimIndexes(Dim, Indexes);
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
-// [概要] 指定次元のIndexの配列で指定した範囲を抽出
-// [引数] Dim: 次元番号(1-based), Indexes: 抽出するIndexの配列, BaseIndex: 基準インデックス
-// [戻値] 抽出後の新しい配列
-// [備考] BaseIndexの省略時はselfの該当次元のbaseを使用
-// [使用例]
-//   Result := Matrix.SliceDimIndexes(2, [1, 3, 5]);    // 1,3,5列目を抽出
-//   Result := Matrix.SliceDimIndexes(2, [1, 3, 5], 1); // 1,3,5列目を抽出
-//////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.SliceDimIndexes(Dim: Integer; const Indexes: TArray<Integer>): TFlexArray<T>;
-begin
-  Result := SliceDimIndexes(Dim, Indexes, Self.FDims[Dim - 1].Low);
-end;
-function TFlexArray<T>.SliceDimIndexes(Dim: Integer; const Indexes: TArray<Integer>; BaseIndex: Integer): TFlexArray<T>;
-var
-  NewRanges: TFlexRanges;
-  d: Integer;
-begin
-  Result := SliceDimIndexesCore(Dim, Indexes);
-
-  // 指定次元をBaseIndexに合わせてreshape
-  SetLength(NewRanges, Result.DimensionCount);
-  for d := 0 to Result.DimensionCount - 1 do
-  begin
-    if d = Dim - 1 then
-      // 指定次元のみBaseIndexを基準に
-      NewRanges[d] := [BaseIndex, BaseIndex + Length(Indexes) - 1]
-    else
-      // 他の次元は元のまま
-      NewRanges[d] := [Result.FDims[d].Low, Result.FDims[d].High];
-  end;
-
-  Result.ReshapeRange(NewRanges);
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
-// [概要] 指定次元のIndexの配列で指定した範囲を抽出または挿入
-// [引数] Dim: 次元番号(1-based), Indexes: 抽出するIndexの配列,
-//        Another: 挿入する配列(省略時は抽出のみ), Index: 挿入開始位置
-// [戻値] 抽出後の新しい配列
-// [使用例]
-//   Result := Matrix.SliceDimIndexesCore(2, [1, 3, 5]);           // 1,3,5列目を抽出
-//   Result := Matrix.SliceDimIndexesCore(2, [1, 2, 3], Insert, 2); // 2列目からInsertを挿入
-//////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.SliceDimIndexesCore(Dim: Integer; const Indexes: TArray<Integer>): TFlexArray<T>;
-var
-  dmy: TFlexArray<T>;
-begin
-  dmy.FTotalSize := -1;  // マーカー値（抽出専用モード）
-  Result := SliceDimIndexesCore(Dim, Indexes, dmy, 0);
-end;
-function TFlexArray<T>.SliceDimIndexesCore(Dim: Integer; const Indexes: TArray<Integer>;
-  const Another: TFlexArray<T>; Index: Integer): TFlexArray<T>;
-var
-  i, d, d1, d2: Integer;
-  NewRanges: TFlexRanges;
-  ResultCoords: TCoords;
-  DimIdx: Integer;
-  bak: Integer;
-  AnotherLow, AnotherHigh: Integer;
-  AnotherIndexes: TArray<Integer>;
-  PrevCoord: Integer;
-  IsInAnotherRange: Boolean;
-begin
-  // 1-based to 0-based
-  DimIdx := Dim - 1;
-
-  if (Another.FTotalSize > 0) then
-  begin
-    SetLength(AnotherIndexes, Another.Len(Dim));
-    for i := 0 to system.High(AnotherIndexes) do
-      AnotherIndexes[i] := Another.FDims[DimIdx].Low + i;
-
-    // Anotherの範囲を設定
-    AnotherLow := Index;
-    AnotherHigh := Index + Another.Len(Dim) - 1;
-  end;
-
-  // NewRangesの計算
-  SetLength(NewRanges, DimensionCount);
-  for d := 0 to DimensionCount - 1 do
-  begin
-    if d = DimIdx then
-    begin
-      if (Another.FTotalSize > 0) then
-        // 結果の次元サイズ = Indexesの数 + Anotherのサイズ
-        NewRanges[d] := [Self.FDims[d].Low, Self.FDims[d].Low + Length(Indexes) + Another.Len(Dim) - 1]
-      else
-        // 抽出する次元はIndexesの範囲に合わせる
-        NewRanges[d] := [Self.FDims[d].Low, Self.FDims[d].Low + Length(Indexes) - 1];
-    end
-    else
-      // 他の次元は元の配列の範囲を維持
-      NewRanges[d] := [FDims[d].Low, FDims[d].High];
-  end;
-
-  Result := TFlexArray<T>.CreateFromRange(NewRanges);
-  Result.InitializeCoords(ResultCoords);
-  PrevCoord := Result.FDims[DimIdx].High + 1; // 初期値は最大Index+1
-
-  for i := 0 to Result.FTotalSize - 1 do
-  begin
-    bak := ResultCoords[DimIdx];
-
-    // true:Anotherの範囲、false:selfの範囲
-    IsInAnotherRange := (Another.FTotalSize > 0) and (ResultCoords[DimIdx] >= AnotherLow) and (ResultCoords[DimIdx] <= AnotherHigh);
-
-    if ResultCoords[DimIdx] < PrevCoord then
-    begin
-      d1 := -1;
-      d2 := -1;
-    end;
-    if ResultCoords[DimIdx] <> PrevCoord then
-    begin
-      if IsInAnotherRange then
-        Inc(d2)
-      else
-        Inc(d1);
-      PrevCoord := ResultCoords[DimIdx];
-    end;
-
-    if IsInAnotherRange then
-    begin
-      ResultCoords[DimIdx] := AnotherIndexes[d2];
-      Result.Elements[i] := Another.Elements[Another.GetOffset(ResultCoords)];
-    end
-    else
-    begin
-      ResultCoords[DimIdx] := Indexes[d1];
-      Result.Elements[i] := Self.Elements[Self.GetOffset(ResultCoords)];
-    end;
-
-    ResultCoords[DimIdx] := bak;
-    Result.IncCoords(ResultCoords);
   end;
 end;
 
