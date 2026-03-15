@@ -87,6 +87,7 @@ type
     procedure IncCoords(var Coords: TCoords);
     function GetCompatibleBaseIndex(const Another: TFlexArray<T>): Integer;
     function RangesStringToRanges(const RangeStr: string): TFlexRanges;
+    function ShapesToRanges(const Shapes: array of Integer; BaseIndex: Integer): TFlexRanges;
     function SliceDimIndexesCore(Dim: Integer; const Indexes: TArray<Integer>): TFlexArray<T>; overload;
     function SliceDimIndexesCore(Dim: Integer; const Indexes: TArray<Integer>; const Another: TFlexArray<T>; Index: Integer): TFlexArray<T>; overload;
     function GetEnumerator: TFlexArrayEnumerator<T>;
@@ -285,7 +286,17 @@ procedure TFlexArray<T>.InitializeDimensions(const Ranges: TFlexRanges);
 var
   i: Integer;
   CurrentStride: NativeInt;
+  NewTotalSize: NativeInt;
 begin
+  // サイズのチェック
+  NewTotalSize := 1;
+  for i := 0 to System.High(Ranges) do
+    NewTotalSize := NewTotalSize * Ranges[i].Len;
+  
+  if NewTotalSize <> FTotalSize then
+    raise Exception.Create(Format(
+      'InitializeDimensions: 要素数が一致しません。現在=%d, 新規=%d', [FTotalSize, NewTotalSize]));
+
   SetLength(FDims, System.Length(Ranges));  // 完全0ベース化
   CurrentStride := 1;
 
@@ -319,19 +330,8 @@ end;
 // [使用例] TFlexArray<Integer>.Create([3, 4], 1)  // 1始まりの3x4行列
 //////////////////////////////////////////////////////////////////////////////////////
 constructor TFlexArray<T>.Create(const Shapes: array of Integer; BaseIndex: Integer);
-var
-  i: Integer;
-  Ranges: TFlexRanges;
-  L, H: Integer;
 begin
-  SetLength(Ranges, System.Length(Shapes));
-  for i := 0 to System.High(Shapes) do
-  begin
-    L := BaseIndex;
-    H := BaseIndex + Shapes[i] - 1;
-    Ranges[i] := [L, H];
-  end;
-  InitializeDimensions(Ranges);
+  InitializeDimensions(ShapesToRanges(Shapes, BaseIndex));
   SetLength(FData, FTotalSize);
 end;
 
@@ -379,9 +379,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 constructor TFlexArray<T>.CreateFromFlexArray(const Src: TFlexArray<T>);
 begin
-  // 構造情報をコピー
   FDims := Copy(Src.FDims);
-
   FTotalSize := Src.FTotalSize;
   FData := Copy(Src.FData);
 end;
@@ -393,14 +391,8 @@ end;
 // [使用例] TFlexArray<Integer>.CreateFromArray(arr, 1)
 //////////////////////////////////////////////////////////////////////////////////////
 constructor TFlexArray<T>.CreateFromArray(const Src: TArray<T>; BaseIndex: Integer = 0);
-var
-  L, H: Integer;
 begin
-  L := BaseIndex;
-  H := BaseIndex + System.Length(Src) - 1;
-  InitializeDimensions([[L, H]]);
-
-  // データをコピーして実体化
+  InitializeDimensions([[BaseIndex, BaseIndex + System.Length(Src) - 1]]);
   FData := Copy(Src);
 end;
 
@@ -411,16 +403,10 @@ end;
 // [備考] CreateFromArrayと異なり、変更は元の配列に反映される
 //////////////////////////////////////////////////////////////////////////////////////
 constructor TFlexArray<T>.ViewFromArray(const Src: TArray<T>; BaseIndex: Integer = 0);
-var
-  L, H: Integer;
 begin
+  InitializeDimensions([[BaseIndex, BaseIndex + System.Length(Src) - 1]]);
+  FData := Src; // データを参照して同一化
   FIsView := True;
-  L := BaseIndex;
-  H := BaseIndex + System.Length(Src) - 1;
-  InitializeDimensions([[L, H]]);
-
-  // データを参照して同一化
-  FData := Src;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -431,33 +417,9 @@ end;
 // [備考] 変更前後の全要素数が一致する必要あり
 //////////////////////////////////////////////////////////////////////////////////////
 procedure TFlexArray<T>.Reshape(const Shapes: array of Integer; BaseIndex: Integer);
-var
-  i: Integer;
-  NewTotalSize: NativeInt;
-  NewRanges: TFlexRanges;
-  L, H: Integer;
 begin
-  // 新しい形状の全要素数を計算
-  NewTotalSize := 1;
-  for i := 0 to System.High(Shapes) do
-    NewTotalSize := NewTotalSize * Shapes[i];
-
-  // 要素数チェック
-  if NewTotalSize <> FTotalSize then
-    raise Exception.Create(Format(
-      'Reshape: 要素数が一致しません。現在=%d, 新規=%d', [FTotalSize, NewTotalSize]));
-
-  // 新しい範囲配列を生成
-  SetLength(NewRanges, System.Length(Shapes));
-  for i := 0 to System.High(Shapes) do
-  begin
-    L := BaseIndex;
-    H := BaseIndex + Shapes[i] - 1;
-    NewRanges[i] := [L, H];
-  end;
-
   // 次元情報のみ更新（データは保持）
-  InitializeDimensions(NewRanges);
+  InitializeDimensions(ShapesToRanges(Shapes, BaseIndex));
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -468,7 +430,8 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 procedure TFlexArray<T>.ReshapeVector(BaseIndex: Integer);
 begin
-  Reshape([FTotalSize], BaseIndex);
+  // 次元情報のみ更新（データは保持）
+  InitializeDimensions([[BaseIndex, BaseIndex + FTotalSize - 1]]);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -478,17 +441,7 @@ end;
 // [使用例] Vector.ReshapeRange([-5, 5])  // -5から5までの範囲に再定義
 //////////////////////////////////////////////////////////////////////////////////////
 procedure TFlexArray<T>.ReshapeRange(const Range: TFlexRange);
-var
-  NewTotalSize: NativeInt;
 begin
-  // 新しい範囲の全要素数を計算
-  NewTotalSize := Range.Len;
-
-  // 要素数チェック
-  if NewTotalSize <> FTotalSize then
-    raise Exception.Create(Format(
-      'ReshapeRange: 要素数が一致しません。現在=%d, 新規=%d', [FTotalSize, NewTotalSize]));
-
   // 次元情報のみ更新（データは保持）
   InitializeDimensions([Range]);
 end;
@@ -500,20 +453,7 @@ end;
 // [使用例] Tensor.ReshapeRange([[1, 3], [1, 2]])  // 3x2行列に再定義
 //////////////////////////////////////////////////////////////////////////////////////
 procedure TFlexArray<T>.ReshapeRange(const Ranges: TFlexRanges);
-var
-  i: Integer;
-  NewTotalSize: NativeInt;
 begin
-  // 新しい範囲の全要素数を計算
-  NewTotalSize := 1;
-  for i := 0 to System.High(Ranges) do
-    NewTotalSize := NewTotalSize * Ranges[i].Len;
-
-  // 要素数チェック
-  if NewTotalSize <> FTotalSize then
-    raise Exception.Create(Format(
-      'ReshapeRange: 要素数が一致しません。現在=%d, 新規=%d', [FTotalSize, NewTotalSize]));
-
   // 次元情報のみ更新（データは保持）
   InitializeDimensions(Ranges);
 end;
@@ -526,7 +466,8 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 procedure TFlexArray<T>.ReshapeRange(const RangeStr: string);
 begin
-  ReshapeRange(RangesStringToRanges(RangeStr));
+  // 次元情報のみ更新（データは保持）
+  InitializeDimensions(RangesStringToRanges(RangeStr));
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -577,7 +518,7 @@ var
 begin
   // 現在の形状を取得
   SetLength(Shapes, Self.DimensionCount);
-  for i := 0 to Self.DimensionCount - 1do
+  for i := 0 to Self.DimensionCount - 1 do
     Shapes[i] := Self.FDims[i].Len; // FDimsは0ベース
 
   Reshape(Shapes, BaseIndex);
@@ -803,6 +744,26 @@ begin
     if L > H then
       raise Exception.CreateFmt('ParseRangesString: 不正な形式 "%s"', [RangeStr]);
 
+    Result[i] := [L, H];
+  end;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 形状配列を範囲配列に変換
+// [引数] 形状配列, 開始インデックス
+// [戻値] 範囲配列
+// [使用例] ShapesToRanges([3, 4], 1) → [[1, 3], [1, 4]]
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.ShapesToRanges(const Shapes: array of Integer; BaseIndex: Integer): TFlexRanges;
+var
+  i: Integer;
+  L, H: Integer;
+begin
+  SetLength(Result, System.Length(Shapes));
+  for i := 0 to System.High(Shapes) do
+  begin
+    L := BaseIndex;
+    H := BaseIndex + Shapes[i] - 1;
     Result[i] := [L, H];
   end;
 end;
