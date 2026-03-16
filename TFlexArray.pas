@@ -286,17 +286,7 @@ procedure TFlexArray<T>.InitializeDimensions(const Ranges: TFlexRanges);
 var
   i: Integer;
   CurrentStride: NativeInt;
-  NewTotalSize: NativeInt;
 begin
-  // サイズのチェック
-  NewTotalSize := 1;
-  for i := 0 to System.High(Ranges) do
-    NewTotalSize := NewTotalSize * Ranges[i].Len;
-  
-  if NewTotalSize <> FTotalSize then
-    raise Exception.Create(Format(
-      'InitializeDimensions: 要素数が一致しません。現在=%d, 新規=%d', [FTotalSize, NewTotalSize]));
-
   SetLength(FDims, System.Length(Ranges));  // 完全0ベース化
   CurrentStride := 1;
 
@@ -418,8 +408,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 procedure TFlexArray<T>.Reshape(const Shapes: array of Integer; BaseIndex: Integer);
 begin
-  // 次元情報のみ更新（データは保持）
-  InitializeDimensions(ShapesToRanges(Shapes, BaseIndex));
+  ReshapeRange(ShapesToRanges(Shapes, BaseIndex));
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -430,8 +419,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 procedure TFlexArray<T>.ReshapeVector(BaseIndex: Integer);
 begin
-  // 次元情報のみ更新（データは保持）
-  InitializeDimensions([[BaseIndex, BaseIndex + FTotalSize - 1]]);
+  ReshapeRange([[BaseIndex, BaseIndex + FTotalSize - 1]]);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -442,8 +430,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 procedure TFlexArray<T>.ReshapeRange(const Range: TFlexRange);
 begin
-  // 次元情報のみ更新（データは保持）
-  InitializeDimensions([Range]);
+  ReshapeRange([Range]);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -453,9 +440,16 @@ end;
 // [使用例] Tensor.ReshapeRange([[1, 3], [1, 2]])  // 3x2行列に再定義
 //////////////////////////////////////////////////////////////////////////////////////
 procedure TFlexArray<T>.ReshapeRange(const Ranges: TFlexRanges);
+var
+  oldTotalSize: NativeInt;
 begin
-  // 次元情報のみ更新（データは保持）
+  oldTotalSize := Self.FTotalSize;
   InitializeDimensions(Ranges);
+
+  // サイズのチェック
+  if oldTotalSize <> FTotalSize then
+    raise Exception.Create(Format(
+      'Reshape: 要素数が一致しません。現在=%d, 新規=%d', [oldTotalSize, FTotalSize]));
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -466,8 +460,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 procedure TFlexArray<T>.ReshapeRange(const RangeStr: string);
 begin
-  // 次元情報のみ更新（データは保持）
-  InitializeDimensions(RangesStringToRanges(RangeStr));
+  ReshapeRange(RangesStringToRanges(RangeStr));
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -922,7 +915,7 @@ end;
 function TFlexArray<T>.SliceDim(Dim: Integer; Index: Integer): TFlexArray<T>;
 begin
   if Self.DimensionCount = 1 then
-    raise Exception.Create('1次元配列にはChooseSlice(Dim, Index)は使用できません。ChooseSlice(Index)を使用してください。');
+    raise Exception.Create('1次元配列にはSliceDim(Dim, Index)は使用できません。');
 
   Result := SliceDimIndexes(Dim, [Index]);
 
