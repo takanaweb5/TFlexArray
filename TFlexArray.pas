@@ -5,9 +5,8 @@ interface
 uses
   System.SysUtils, System.Generics.Collections, System.Math,
   System.Rtti,    // TValue のため
-  System.TypInfo, // tkString などの型判定（TValue.Kind）のため
-  System.Generics.Defaults; // IComparer のため
-
+  System.TypInfo; // tkString などの型判定（TValue.Kind）のため
+  
 type
   TFlexRange = TArray<Integer>;  // [Low, High] のペア
   TFlexRangeHelper = record helper for TFlexRange
@@ -47,18 +46,10 @@ type
 
   // 非破壊的Map用コールバック
   TMappedFunc<T, TResult> = reference to function(const Value: T; const Coords: TCoords): TResult;
-  TMappedFuncValue<T, TResult> = reference to function(const Value: T): TResult;
   // 破壊的Map用コールバック
   TMapFunc<T> = reference to function(const Value: T; const Coords: TCoords): T;
-  TMapFuncValue<T> = reference to function(const Value: T): T;
   // Filter用コールバック
   TFilterFunc<T> = reference to function(const Value: T; const Coords: TCoords): Boolean;
-  TFilterFuncValue<T> = reference to function(const Value: T): Boolean;
-  // Reduce用コールバック（InitialValueあり）
-  TReduceFunc<T, TResult> = reference to function(const Current: TResult; const Value: T; const Coords: TCoords): TResult;
-  TReduceFuncValue<T, TResult> = reference to function(const Current: TResult; const Value: T): TResult;
-  // Reduce用コールバック（InitialValueなし、TResult=Tに固定）
-  TReduceFuncSimple<T> = reference to function(const Current: T; const Value: T): T;
 
   // Map用コールバック関数サンプル(連番作成)
   function SequentialNumber(const Value: Integer; const Coords: TCoords): Integer;
@@ -157,21 +148,9 @@ type
 
     // Swiftスタイル: 非破壊的(-ed) / 破壊的(原形)
     procedure Map(const AFunc: TMapFunc<T>); overload;
-    procedure Map(const AFunc: TMapFuncValue<T>); overload;
     function Mapped<TResult>(const AFunc: TMappedFunc<T, TResult>): TFlexArray<TResult>; overload;
-    function Mapped<TResult>(const AFunc: TMappedFuncValue<T, TResult>): TFlexArray<TResult>; overload;
 
     function Filter(const AFunc: TFilterFunc<T>): TArray<T>; overload;
-    function Filter(const AFunc: TFilterFuncValue<T>): TArray<T>; overload;
-
-    function Reduce<TResult>(const InitialValue: TResult; const AFunc: TReduceFunc<T, TResult>): TResult; overload;
-    function Reduce<TResult>(const InitialValue: TResult; const AFunc: TReduceFuncValue<T, TResult>): TResult; overload;
-    function Reduce(const AFunc: TReduceFuncSimple<T>): T; overload;
-
-    // 集約関数
-    function Sum: T;
-    function Max: T;
-    function Min: T;
   end;
 
 implementation
@@ -1221,7 +1200,7 @@ begin
 
   SetLength(Indexes, Self.Len(Dim));
   for i := 0 to System.High(Indexes) do
-    Indexes[i] := Self.Low(Dim) + i;
+    Indexes[i] := Self.Low(Dim) + i; // 元の配列[1..5]の全インデックスを収集[1,2,3,4,5]
 
   Result := SliceDimIndexesCore(Dim, Indexes, Items, Index);
 end;
@@ -1251,14 +1230,14 @@ begin
   // 前半部のインデックスを収集
   for i := Self.Low(Dim) to Range.Low - 1 do
   begin
-    Indexes[d] := i;
+    Indexes[d] := i; // [1..9]のうち[2..5]を削除 → [1,2,3,4]
     Inc(d);
   end;
 
   // 後半部のインデックスを収集
   for i := Range.High + 1 to Self.High(Dim) do
   begin
-    Indexes[d] := i;
+    Indexes[d] := i; // [1..9]のうち[2..5]を削除 → [6,7,8,9]
     Inc(d);
   end;
 
@@ -1286,7 +1265,7 @@ begin
 
   SetLength(Indexes, Range.Len);
   for i := 0 to system.High(Indexes) do
-    Indexes[i] := Range.Low + i;
+    Indexes[i] := Range.Low + i; // [2, 5] → [2,3,4,5]
 
   Result := SliceDimIndexes(Dim, Indexes);
 end;
@@ -1452,26 +1431,6 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
-// [概要] 配列の各要素を直接変更する（破壊的）
-// [引数] 変換関数（値のみを引数に取り、新しい値を返す）
-// [戻値] なし
-// [使用例]  A.Map(function(const Value: Integer): Integer
-//             begin
-//               Result := Value * 2;
-//             end);
-//////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.Map(const AFunc: TMapFuncValue<T>);
-var
-  i: Integer;
-begin
-  CheckViewMode;
-  for i := 0 to FTotalSize - 1 do
-  begin
-    Self.Elements[i] := AFunc(Self.Elements[i]);
-  end;
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
 // [概要] 配列の各要素を変換して新しい配列を返す（非破壊的）
 // [引数] 変換関数（値と座標を引数に取り、新しい値を返す）
 // [戻値] 変換後の新しい配列
@@ -1491,26 +1450,6 @@ begin
   begin
     Result.Elements[i] := AFunc(Self.Elements[i], CurrentCoords);
     Result.IncCoords(CurrentCoords);
-  end;
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
-// [概要] 配列の各要素を変換して新しい配列を返す（非破壊的）
-// [引数] 変換関数（値のみを引数に取り、新しい値を返す）
-// [戻値] 変換後の新しい配列
-// [使用例] B := A.Mapped<string>(function(const Value: Integer): string
-//                 begin
-//                   Result := Value.ToString;
-//                 end);
-//////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.Mapped<TResult>(const AFunc: TMappedFuncValue<T, TResult>): TFlexArray<TResult>;
-var
-  i: Integer;
-begin
-  Result := TFlexArray<TResult>.CreateFromRange(GetRanges);
-  for i := 0 to FTotalSize - 1 do
-  begin
-    Result.Elements[i] := AFunc(Self.Elements[i]);
   end;
 end;
 
@@ -1550,178 +1489,6 @@ begin
       Inc(Count);
     end;
     Self.IncCoords(CurrentCoords);
-  end;
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
-// [概要] 配列の要素をフィルタリングして条件に合う要素のみを返す（非破壊的）
-// [引数] フィルタ関数（値のみを引数に取り、条件を返す）
-// [戻値] 条件に合う要素の配列
-// [使用例] B := A.Filter(function(const Value: Integer): Boolean
-//                 begin
-//                   Result := Value > 0;
-//                 end);
-//////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.Filter(const AFunc: TFilterFuncValue<T>): TArray<T>;
-var
-  i, Count: Integer;
-begin
-  // まず結果をカウント
-  Count := 0;
-  for i := 0 to FTotalSize - 1 do
-    if AFunc(Self.Elements[i]) then
-      Inc(Count);
-
-  // 結果を設定
-  SetLength(Result, Count);
-  Count := 0;
-  for i := 0 to FTotalSize - 1 do
-  begin
-    if AFunc(Self.Elements[i]) then
-    begin
-      Result[Count] := Self.Elements[i];
-      Inc(Count);
-    end;
-  end;
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
-// [概要] 配列の要素を集約して単一の値に変換（非破壊的）
-// [引数] 初期値, 集約関数（値と座標を引数に取る）
-// [戻値] 集約結果
-// [使用例] Sum := A.Reduce<Integer>(0,
-//            function(const Current: Integer; const Value: Integer; const Coords: TCoords): Integer
-//            begin
-//              Result := Current + Coords[0];
-//            end);
-//////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.Reduce<TResult>(const InitialValue: TResult; const AFunc: TReduceFunc<T, TResult>): TResult;
-var
-  i: Integer;
-  CurrentCoords: TCoords;
-begin
-  Result := InitialValue;
-  Self.InitializeCoords(CurrentCoords);
-  for i := 0 to FTotalSize - 1 do
-  begin
-    Result := AFunc(Result, Self.Elements[i], CurrentCoords);
-    Self.IncCoords(CurrentCoords);
-  end;
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
-// [概要] 配列の要素を集約して単一の値に変換（非破壊的）
-// [引数] 初期値, 集約関数（値のみを引数に取る）
-// [戻値] 集約結果
-// [使用例] Sum := A.Reduce<Integer>(0,
-//            function(const Current: Integer; const Value: Integer): Integer
-//            begin
-//              Result := Current + Value;
-//            end);
-//////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.Reduce<TResult>(const InitialValue: TResult; const AFunc: TReduceFuncValue<T, TResult>): TResult;
-var
-  i: Integer;
-begin
-  Result := InitialValue;
-  for i := 0 to FTotalSize - 1 do
-    Result := AFunc(Result, Self.Elements[i]);
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
-// [概要] 配列の要素を集約して単一の値に変換（非破壊的、初期値なし）
-// [引数] 集約関数（値のみを引数に取る、TResult=Tに固定）
-// [戻値] 集約結果
-// [備考] 空配列の場合は例外を発生させる
-// [使用例] Sum := A.Reduce(
-//            function(const Current: Integer; const Value: Integer): Integer
-//            begin
-//              Result := Current + Value;
-//            end);
-//////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.Reduce(const AFunc: TReduceFuncSimple<T>): T;
-var
-  i: Integer;
-begin
-  Result := Self.Elements[0];
-  for i := 1 to FTotalSize - 1 do
-    Result := AFunc(Result, Self.Elements[i]);
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
-// [概要] 配列の要素の合計値を計算
-// [引数] なし
-// [戻値] 合計値
-//////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.Sum: T;
-var
-  i: Integer;
-  Value: Variant;
-begin
-  try
-    Value := 0;
-    for i := 0 to FTotalSize - 1 do
-      Value := Value + TValue.From<T>(Self.Elements[i]).AsVariant;
-
-    Result := TValue.FromVariant(Value).AsType<T>;
-  except
-    raise Exception.Create('Sum: この型は加算ができません');
-  end;
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
-// [概要] 配列の要素の最大値を取得
-// [引数] なし
-// [戻値] 最大値
-//////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.Max: T;
-var
-  i: Integer;
-  Comparer: IComparer<T>;
-begin
-  // 型 T に最適な比較器を取得（一度だけ実行）
-  Comparer := TComparer<T>.Default;
-
-  // 最初の要素を暫定の最大値とする
-  Result := Self.Elements[0];
-
-  try
-    for i := 1 to FTotalSize - 1 do
-    begin
-      // Comparer.Compare(A, B) は A < B なら 負の値、A = B なら 0、A > B なら 正の値を返す
-      if Comparer.Compare(Self.Elements[i], Result) > 0 then
-        Result := Self.Elements[i];
-    end;
-  except
-    raise Exception.Create('Max: この型は比較ができません');
-  end;
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
-// [概要] 配列の要素の最小値を取得
-// [引数] なし
-// [戻値] 最小値
-//////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.Min: T;
-var
-  i: Integer;
-  Comparer: IComparer<T>;
-begin
-  // 型 T に最適な比較器を取得（一度だけ実行）
-  Comparer := TComparer<T>.Default;
-
-  // 最初の要素を暫定の最小値とする
-  Result := Self.Elements[0];
-
-  try
-    for i := 1 to FTotalSize - 1 do
-    begin
-      // Comparer.Compare(A, B) は A < B なら 負の値、A = B なら 0、A > B なら 正の値を返す
-      if Comparer.Compare(Self.Elements[i], Result) < 0 then
-        Result := Self.Elements[i];
-    end;
-  except
-    raise Exception.Create('Min: この型は比較ができません');
   end;
 end;
 
