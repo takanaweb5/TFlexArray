@@ -121,8 +121,26 @@ type
     function SliceDimRange(Dim: Integer; const Range: TFlexRange): TFlexArray<T>; overload;  // nD
     function SliceRow(RowIndex: Integer): TFlexArray<T>;  // 2D
     function SliceCol(ColIndex: Integer): TFlexArray<T>;  // 2D
+    function SliceRows(const RowIndexes: TArray<Integer>): TFlexArray<T>;  // 2D
+    function SliceCols(const ColIndexes: TArray<Integer>): TFlexArray<T>;  // 2D
+    function SliceRowRange(const Range: TFlexRange): TFlexArray<T>;  // 2D
+    function SliceColRange(const Range: TFlexRange): TFlexArray<T>;  // 2D
     function SliceDimIndexes(Dim: Integer; const Indexes: TArray<Integer>): TFlexArray<T>; overload;
     function SliceDimIndexes(Dim: Integer; const Indexes: TArray<Integer>; BaseIndex: Integer): TFlexArray<T>; overload;
+
+    // 2D配列の行・列挿入
+    function InsertRow(RowIndex: Integer; const Another: TFlexArray<T>): TFlexArray<T>; overload;
+    function InsertCol(ColIndex: Integer; const Another: TFlexArray<T>): TFlexArray<T>; overload;
+    function InsertRow(RowIndex: Integer; const Items: TArray<T>): TFlexArray<T>; overload;
+    function InsertCol(ColIndex: Integer; const Items: TArray<T>): TFlexArray<T>; overload;
+    function InsertRows(RowIndex: Integer; const Another: TFlexArray<T>): TFlexArray<T>;
+    function InsertCols(ColIndex: Integer; const Another: TFlexArray<T>): TFlexArray<T>;
+
+    // 2D配列の行・列削除
+    function DeleteRow(RowIndex: Integer): TFlexArray<T>;
+    function DeleteCol(ColIndex: Integer): TFlexArray<T>;
+    function DeleteRowRange(const Range: TFlexRange): TFlexArray<T>;
+    function DeleteColRange(const Range: TFlexRange): TFlexArray<T>;
 
     function Transpose(const NewDims: array of Integer): TFlexArray<T>; overload; // nD
     function Transpose(): TFlexArray<T>; overload; // 2D
@@ -922,6 +940,214 @@ function TFlexArray<T>.SliceCol(ColIndex: Integer): TFlexArray<T>;
 begin
   CheckDimension(2);
   Result := SliceDim(2, ColIndex);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 指定された複数行を抽出
+// [引数] RowIndexes: 抽出する行インデックスの配列
+// [戻値] 抽出後の新しい配列
+// [使用例] Matrix.SliceRows([1, 3, 5])  // 1,3,5行目を抽出
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.SliceRows(const RowIndexes: TArray<Integer>): TFlexArray<T>;
+begin
+  CheckDimension(2);
+  Result := SliceDimIndexes(1, RowIndexes);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 指定された複数列を抽出
+// [引数] ColIndexes: 抽出する列インデックスの配列
+// [戻値] 抽出後の新しい配列
+// [使用例] Matrix.SliceCols([2, 4, 6])  // 2,4,6列目を抽出
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.SliceCols(const ColIndexes: TArray<Integer>): TFlexArray<T>;
+begin
+  CheckDimension(2);
+  Result := SliceDimIndexes(2, ColIndexes);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 指定範囲の複数行を抽出
+// [引数] Range: 抽出範囲 [Low, High]
+// [戻値] 抽出後の新しい配列
+// [使用例] Matrix.SliceRowRange([2, 5])  // 2〜5行目を抽出
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.SliceRowRange(const Range: TFlexRange): TFlexArray<T>;
+begin
+  CheckDimension(2);
+  Result := SliceDimRange(1, Range);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 指定範囲の複数列を抽出
+// [引数] Range: 抽出範囲 [Low, High]
+// [戻値] 抽出後の新しい配列
+// [使用例] Matrix.SliceColRange([1, 3])  // 1〜3列目を抽出
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.SliceColRange(const Range: TFlexRange): TFlexArray<T>;
+begin
+  CheckDimension(2);
+  Result := SliceDimRange(2, Range);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 指定位置に行を挿入
+// [引数] RowIndex: 挿入位置, Another: 挿入する行配列
+// [戻値] 挿入後の新しい配列
+// [使用例] Matrix.InsertRow(2, NewRow)  // 2行目に挿入
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.InsertRow(RowIndex: Integer; const Another: TFlexArray<T>): TFlexArray<T>;
+var
+  AnotherReady: TFlexArray<T>;
+begin
+  CheckDimension(2);
+  Another.CheckDimension(1);
+  if Another.FDims.Items[1].Len <> Self.FDims.Items[2].Len then
+    raise Exception.Create('InsertRow: 列数が一致しません');
+
+  // constパラメータをローカル変数にコピー
+  AnotherReady := Another;
+
+  // 1Dを2Dに昇格（次元1にサイズ1の次元を挿入）
+  AnotherReady.PromoteDimension(1);
+
+  // BaseIndexを合わせる
+  AnotherReady.NormalizeToBaseIndex(Self.Low(1));
+
+  Result := InsertDim(1, RowIndex, AnotherReady);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 指定位置に列を挿入
+// [引数] ColIndex: 挿入位置, Another: 挿入する列配列
+// [戻値] 挿入後の新しい配列
+// [使用例] Matrix.InsertCol(3, NewCol)  // 3列目に挿入
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.InsertCol(ColIndex: Integer; const Another: TFlexArray<T>): TFlexArray<T>;
+var
+  AnotherReady: TFlexArray<T>;
+begin
+  CheckDimension(2);
+  Another.CheckDimension(1);
+  if Another.FDims.Items[1].Len <> Self.FDims.Items[1].Len then
+    raise Exception.Create('InsertCol: 行数が一致しません');
+
+  // constパラメータをローカル変数にコピー
+  AnotherReady := Another;
+
+  // 1Dを2Dに昇格（次元2にサイズ1の次元を挿入）
+  AnotherReady.PromoteDimension(2);
+  
+  // BaseIndexを合わせる
+  AnotherReady.NormalizeToBaseIndex(Self.Low(1));
+  
+  Result := InsertDim(2, ColIndex, AnotherReady);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 指定位置に1D配列を行として挿入
+// [引数] RowIndex: 挿入位置, Items: 挿入する1D配列
+// [戻値] 挿入後の新しい配列
+// [使用例] Matrix.InsertRow(2, [1,2,3,4])  // 2行目に1D配列を挿入
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.InsertRow(RowIndex: Integer; const Items: TArray<T>): TFlexArray<T>;
+var
+  Row2D: TFlexArray<T>;
+begin
+  CheckDimension(2);
+  // 1D配列を2D配列に昇格
+  Row2D := TFlexArray<T>.CreateFromArray(Items);
+  Row2D.Reshape([1, Length(Items)], 1);
+  Result := InsertDim(1, RowIndex, Row2D);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 指定位置に1D配列を列として挿入
+// [引数] ColIndex: 挿入位置, Items: 挿入する1D配列
+// [戻値] 挿入後の新しい配列
+// [使用例] Matrix.InsertCol(3, [1,2,3])  // 3列目に1D配列を挿入
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.InsertCol(ColIndex: Integer; const Items: TArray<T>): TFlexArray<T>;
+var
+  Col2D: TFlexArray<T>;
+begin
+  CheckDimension(2);
+  // 1D配列を2D配列に昇格
+  Col2D := TFlexArray<T>.CreateFromArray(Items);
+  Col2D.Reshape([Length(Items), 1], 1);
+  Result := InsertDim(2, ColIndex, Col2D);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 指定位置に複数行を挿入
+// [引数] RowIndex: 挿入位置, Another: 挿入する行配列
+// [戻値] 挿入後の新しい配列
+// [使用例] Matrix.InsertRows(2, NewRows)  // 2行目から複数行を挿入
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.InsertRows(RowIndex: Integer; const Another: TFlexArray<T>): TFlexArray<T>;
+begin
+  CheckDimension(2);
+  Result := InsertDim(1, RowIndex, Another);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 指定位置に複数列を挿入
+// [引数] ColIndex: 挿入位置, Another: 挿入する列配列
+// [戻値] 挿入後の新しい配列
+// [使用例] Matrix.InsertCols(3, NewCols)  // 3列目から複数列を挿入
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.InsertCols(ColIndex: Integer; const Another: TFlexArray<T>): TFlexArray<T>;
+begin
+  CheckDimension(2);
+  Result := InsertDim(2, ColIndex, Another);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 指定行を削除
+// [引数] RowIndex: 削除する行インデックス
+// [戻値] 削除後の新しい配列
+// [使用例] Matrix.DeleteRow(2)  // 2行目を削除
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.DeleteRow(RowIndex: Integer): TFlexArray<T>;
+begin
+  CheckDimension(2);
+  Result := DeleteDim(1, [RowIndex, RowIndex]);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 指定列を削除
+// [引数] ColIndex: 削除する列インデックス
+// [戻値] 削除後の新しい配列
+// [使用例] Matrix.DeleteCol(3)  // 3列目を削除
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.DeleteCol(ColIndex: Integer): TFlexArray<T>;
+begin
+  CheckDimension(2);
+  Result := DeleteDim(2, [ColIndex, ColIndex]);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 指定範囲の複数行を削除
+// [引数] Range: 削除範囲 [Low, High]
+// [戻値] 削除後の新しい配列
+// [使用例] Matrix.DeleteRowRange([2, 5])  // 2〜5行目を削除
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.DeleteRowRange(const Range: TFlexRange): TFlexArray<T>;
+begin
+  CheckDimension(2);
+  Result := DeleteDim(1, Range);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 指定範囲の複数列を削除
+// [引数] Range: 削除範囲 [Low, High]
+// [戻値] 削除後の新しい配列
+// [使用例] Matrix.DeleteColRange([1, 3])  // 1〜3列目を削除
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.DeleteColRange(const Range: TFlexRange): TFlexArray<T>;
+begin
+  CheckDimension(2);
+  Result := DeleteDim(2, Range);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
