@@ -1550,29 +1550,16 @@ end;
 function TFlexArray<T>.SliceDimIndexesCore(Dim: Integer; const Indexes: TArray<Integer>;
   const Another: TFlexArray<T>; Index: Integer): TFlexArray<T>;
 var
-  i, d, d1, d2: Integer;
+  i, d: Integer;
   NewRanges: TFlexRanges;
   ResultCoords: TCoords;
   DimIdx: Integer;
-  bak: Integer;
+  bak, ZeroBaseIdx: Integer;
   AnotherLow, AnotherHigh: Integer;
-  AnotherIndexes: TArray<Integer>;
-  PrevCoord: Integer;
-  IsInAnotherRange: Boolean;
+  MappedIndexes: TArray<Integer>;
 begin
   // 1-based to 0-based
   DimIdx := Dim - 1;
-
-  if (Another.FTotalSize > 0) then
-  begin
-    SetLength(AnotherIndexes, Another.Len(Dim));
-    for i := 0 to system.High(AnotherIndexes) do
-      AnotherIndexes[i] := Another.FDims[DimIdx].Low + i;
-
-    // Anotherの範囲を設定
-    AnotherLow := Index;
-    AnotherHigh := Index + Another.Len(Dim) - 1;
-  end;
 
   // NewRangesの計算
   SetLength(NewRanges, DimensionCount);
@@ -1592,41 +1579,56 @@ begin
       NewRanges[d] := [FDims[d].Low, FDims[d].High];
   end;
 
+  if (Another.FTotalSize > 0) then
+  begin
+    SetLength(MappedIndexes, system.Length(Indexes) + Another.Len(Dim));
+    ZeroBaseIdx := Index - Self.FDims[DimIdx].Low;
+
+    // Indexesの前半を設定
+    d := 0;
+    for i := 0 to ZeroBaseIdx - 1 do begin
+      MappedIndexes[d] := Indexes[i];
+      Inc(d);
+    end;
+
+    // Anotherの範囲を設定
+    for i := Another.FDims[DimIdx].Low to Another.FDims[DimIdx].High do begin
+      MappedIndexes[d] := i;
+      Inc(d);
+    end;
+
+    // Indexesの後半を設定
+    for i := ZeroBaseIdx to system.High(Indexes) do begin
+      MappedIndexes[d] := Indexes[i];
+      Inc(d);
+    end;
+
+    // Anotherの範囲を設定
+    AnotherLow := Index;
+    AnotherHigh := Index + Another.Len(Dim) - 1;
+  end
+  else
+  begin
+    MappedIndexes := Indexes;
+    AnotherLow := 0;
+    AnotherHigh := 0;
+  end;
+
   Result := TFlexArray<T>.CreateFromRange(NewRanges);
   Result.InitializeCoords(ResultCoords);
-  PrevCoord := system.High(Integer); // 初期値は最大値
 
   for i := 0 to Result.FTotalSize - 1 do
   begin
     bak := ResultCoords[DimIdx];
+    ZeroBaseIdx := bak - Self.FDims[DimIdx].Low;
+    ResultCoords[DimIdx] := MappedIndexes[ZeroBaseIdx];
 
-    // true:Anotherの範囲、false:selfの範囲
-    IsInAnotherRange := (Another.FTotalSize > 0) and (ResultCoords[DimIdx] >= AnotherLow) and (ResultCoords[DimIdx] <= AnotherHigh);
-
-    if ResultCoords[DimIdx] < PrevCoord then
-    begin
-      d1 := -1;
-      d2 := -1;
-    end;
-    if ResultCoords[DimIdx] <> PrevCoord then
-    begin
-      if IsInAnotherRange then
-        Inc(d2)
-      else
-        Inc(d1);
-      PrevCoord := ResultCoords[DimIdx];
-    end;
-
-    if IsInAnotherRange then
-    begin
-      ResultCoords[DimIdx] := AnotherIndexes[d2];
-      Result.Elements[i] := Another.Elements[Another.GetOffset(ResultCoords)];
-    end
+    if (Another.FTotalSize > 0) and (AnotherLow <= bak) and (bak <= AnotherHigh) then
+      // Anotherの範囲内
+      Result.Elements[i] := Another.Elements[Another.GetOffset(ResultCoords)]
     else
-    begin
-      ResultCoords[DimIdx] := Indexes[d1];
+      // Selfの範囲内
       Result.Elements[i] := Self.Elements[Self.GetOffset(ResultCoords)];
-    end;
 
     ResultCoords[DimIdx] := bak;
     Result.IncCoords(ResultCoords);
