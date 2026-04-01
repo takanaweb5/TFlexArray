@@ -1554,12 +1554,16 @@ var
   NewRanges: TFlexRanges;
   ResultCoords: TCoords;
   DimIdx: Integer;
-  bak, ZeroBaseIdx: Integer;
+  bak: Integer;
   AnotherLow, AnotherHigh: Integer;
-  MappedIndexes: TArray<Integer>;
+  FlexIndexes, MappedIndexes: TFlexArray<Integer>;
+  TargetDim: TFlexDimension;
 begin
   // 1-based to 0-based
   DimIdx := Dim - 1;
+  TargetDim := Self.FDims[DimIdx];
+
+  FlexIndexes := TFlexArray<Integer>.CreateFromArray(Indexes, TargetDim.Low);
 
   // NewRangesの計算
   SetLength(NewRanges, DimensionCount);
@@ -1569,10 +1573,10 @@ begin
     begin
       if (Another.FTotalSize > 0) then
         // 結果の次元サイズ = Indexesの数 + Anotherのサイズ
-        NewRanges[d] := [Self.FDims[d].Low, Self.FDims[d].Low + Length(Indexes) + Another.Len(Dim) - 1]
+        NewRanges[DimIdx] := [TargetDim.Low, TargetDim.Low + Length(Indexes) + Another.Len(Dim) - 1]
       else
         // 抽出する次元はIndexesの範囲に合わせる
-        NewRanges[d] := [Self.FDims[d].Low, Self.FDims[d].Low + Length(Indexes) - 1];
+        NewRanges[DimIdx] := [TargetDim.Low, TargetDim.Low + Length(Indexes) - 1];
     end
     else
       // 他の次元は元の配列の範囲を維持
@@ -1581,25 +1585,24 @@ begin
 
   if (Another.FTotalSize > 0) then
   begin
-    SetLength(MappedIndexes, system.Length(Indexes) + Another.Len(Dim));
-    ZeroBaseIdx := Index - Self.FDims[DimIdx].Low;
+    MappedIndexes := TFlexArray<Integer>.Create([TargetDim.Len + Another.Len(Dim)], TargetDim.Low);
 
     // Indexesの前半を設定
-    d := 0;
-    for i := 0 to ZeroBaseIdx - 1 do begin
-      MappedIndexes[d] := Indexes[i];
+    d := TargetDim.Low;
+    for i := FlexIndexes.Low to Index - 1 do begin
+      MappedIndexes[d] := FlexIndexes[i];
       Inc(d);
     end;
 
     // Anotherの範囲を設定
-    for i := Another.FDims[DimIdx].Low to Another.FDims[DimIdx].High do begin
+    for i := Another.Low(Dim) to Another.High(Dim) do begin
       MappedIndexes[d] := i;
       Inc(d);
     end;
 
     // Indexesの後半を設定
-    for i := ZeroBaseIdx to system.High(Indexes) do begin
-      MappedIndexes[d] := Indexes[i];
+    for i := Index to FlexIndexes.High do begin
+      MappedIndexes[d] := FlexIndexes[i];
       Inc(d);
     end;
 
@@ -1609,7 +1612,7 @@ begin
   end
   else
   begin
-    MappedIndexes := Indexes;
+    MappedIndexes := TFlexArray<Integer>.CreateFromArray(Indexes, TargetDim.Low);
     AnotherLow := 0;
     AnotherHigh := 0;
   end;
@@ -1620,8 +1623,7 @@ begin
   for i := 0 to Result.FTotalSize - 1 do
   begin
     bak := ResultCoords[DimIdx];
-    ZeroBaseIdx := bak - Self.FDims[DimIdx].Low;
-    ResultCoords[DimIdx] := MappedIndexes[ZeroBaseIdx];
+    ResultCoords[DimIdx] := MappedIndexes[bak];
 
     if (Another.FTotalSize > 0) and (AnotherLow <= bak) and (bak <= AnotherHigh) then
       // Anotherの範囲内
