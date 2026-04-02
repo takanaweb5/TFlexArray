@@ -288,7 +288,7 @@ begin
   CurrentStride := 1;
 
   // 後ろの次元から歩幅を計算することで多次元に対応
-  for i := System.Length(Ranges) - 1 downto 0 do
+  for i := System.High(Ranges) downto 0 do
   begin
     // 引数の配列が [Low, High] のペアになっているか念のためチェック
     if System.Length(Ranges[i]) <> 2 then
@@ -508,7 +508,7 @@ var
 begin
   // 現在の形状を取得
   SetLength(Shapes, Self.DimensionCount);
-  for i := 0 to Self.DimensionCount - 1 do
+  for i := 0 to system.High(Shapes) do
     Shapes[i] := Self.FDims[i].Len; // FDimsは0ベース
 
   Reshape(Shapes, BaseIndex);
@@ -554,7 +554,7 @@ begin
   TempIndex := LinearIndex;
 
   // 末尾の次元から順に割っていく（GetOffsetの逆工程）
-  for i := Self.DimensionCount - 1 downto 0 do
+  for i := system.High(Result) downto 0 do
   begin
     Result[i] := (TempIndex mod FDims[i].Len) + FDims[i].Low; // FDimsは0ベース
     TempIndex := TempIndex div FDims[i].Len;
@@ -771,7 +771,7 @@ var
 begin
   Ranges := GetRanges;
   SetLength(Parts, System.Length(Ranges));
-  for i := 0 to System.Length(Ranges) - 1 do
+  for i := 0 to System.High(Ranges) do
     Parts[i] := Format('%d..%d', [Ranges[i].Low, Ranges[i].High]);
   Result := '[' + String.Join(', ', Parts) + ']';
 end;
@@ -851,7 +851,7 @@ var
   i: Integer;
 begin
   SetLength(Result, Self.DimensionCount);
-  for i := 0 to Self.DimensionCount - 1 do
+  for i := 0 to system.High(Result) do
     Result[i] := [FDims[i].Low, FDims[i].High]; // FDimsは0ベース
 end;
 
@@ -875,7 +875,7 @@ var
   i: Integer;
 begin
   SetLength(Coords, Self.DimensionCount);
-  for i := 0 to Self.DimensionCount - 1 do
+  for i := 0 to system.High(Coords) do
     Coords[i] := Self.FDims[i].Low;  // FDimsは0ベース
 end;
 
@@ -1169,19 +1169,19 @@ begin
 
   // すべての次元が使用されているかチェック
   SetLength(DimUsed, DimensionCount);
-  for i := 0 to DimensionCount - 1 do
+  for i := 0 to system.High(DimUsed) do
   begin
     if (NewDims[i] < 1) or (NewDims[i] > DimensionCount) then
       raise Exception.CreateFmt('Transpose: 次元指定 %d が範囲外です。', [NewDims[i]]);
     DimUsed[NewDims[i] - 1] := True;
   end;
-  for i := 0 to DimensionCount - 1 do
+  for i := 0 to system.High(DimUsed) do
     if not DimUsed[i] then
       raise Exception.CreateFmt('Transpose: 次元 %d が指定されていません。', [i + 1]);
 
   // NewRanges の計算
   SetLength(NewRanges, DimensionCount);
-  for i := 0 to DimensionCount - 1 do
+  for i := 0 to system.High(NewRanges) do
     NewRanges[i] := [Self.Low(NewDims[i]), Self.High(NewDims[i])];
   Result := TFlexArray<T>.CreateFromRange(NewRanges);
 
@@ -1189,7 +1189,7 @@ begin
   Result.InitializeCoords(ResultCoords);
   for i := 0 to Result.FTotalSize - 1 do
   begin
-    for d := 0 to DimensionCount - 1 do
+    for d := 0 to system.High(SelfCoords) do
     begin
       // 次元を入れ替え（注意：1-basedインデックスを0-basedインデックスに変換）
       SelfCoords[NewDims[d] - 1] := ResultCoords[d];
@@ -1518,7 +1518,7 @@ begin
 
   // 指定次元をBaseIndexに合わせてreshape
   SetLength(NewRanges, Result.DimensionCount);
-  for d := 0 to Result.DimensionCount - 1 do
+  for d := 0 to System.High(NewRanges) do
   begin
     if d = Dim - 1 then
       // 指定次元のみBaseIndexを基準に
@@ -1563,16 +1563,14 @@ begin
   DimIdx := Dim - 1;
   TargetDim := Self.FDims[DimIdx];
 
-  FlexIndexes := TFlexArray<Integer>.CreateFromArray(Indexes, TargetDim.Low);
-
   // NewRangesの計算
   SetLength(NewRanges, DimensionCount);
-  for d := 0 to DimensionCount - 1 do
+  for d := 0 to System.High(NewRanges) do
   begin
     if d = DimIdx then
     begin
       if (Another.FTotalSize > 0) then
-        // 結果の次元サイズ = Indexesの数 + Anotherのサイズ
+        // 結果の次元サイズ = Indexesのサイズ + Anotherのサイズ
         NewRanges[DimIdx] := [TargetDim.Low, TargetDim.Low + Length(Indexes) + Another.Len(Dim) - 1]
       else
         // 抽出する次元はIndexesの範囲に合わせる
@@ -1585,6 +1583,8 @@ begin
 
   if (Another.FTotalSize > 0) then
   begin
+    // BaseIndexを該当次元のBaseIndexで統一する
+    FlexIndexes := TFlexArray<Integer>.CreateFromArray(Indexes, TargetDim.Low);
     MappedIndexes := TFlexArray<Integer>.Create([TargetDim.Len + Another.Len(Dim)], TargetDim.Low);
 
     // Indexesの前半を設定
