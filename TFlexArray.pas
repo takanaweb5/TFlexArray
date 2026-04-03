@@ -1037,10 +1037,10 @@ begin
 
   // 1Dを2Dに昇格（次元2にサイズ1の次元を挿入）
   AnotherReady.PromoteDimension(2);
-  
+
   // BaseIndexを合わせる
   AnotherReady.NormalizeToBaseIndex(Self.Low(1));
-  
+
   Result := InsertDim(2, ColIndex, AnotherReady);
 end;
 
@@ -1425,7 +1425,7 @@ begin
     raise Exception.CreateFmt('InsertDim: 挿入配列の次元数が不正です。期待=%d, 実際=%d', [DimensionCount, Items.DimensionCount]);
 
   SetLength(Indexes, Self.Len(Dim));
-  for i := 0 to System.High(Indexes) do
+  for i := 0 to System.Length(Indexes) - 1 do
     Indexes[i] := Self.Low(Dim) + i; // 元の配列[1..5]の全インデックスを収集[1,2,3,4,5]
 
   Result := SliceDimIndexesCore(Dim, Indexes, Items, Index);
@@ -1436,7 +1436,7 @@ end;
 // [引数] Dim: 対象次元(1-based), Range: 削除範囲[Low, High]
 // [戻値] 削除後の新しい配列
 // [使用例]
-//   Result := Matrix.DeleteDim(2, [2, 5]); // 2〜5列目を削除
+//   Result := Matrix.DeleteDim(2, [3, 5]); // 3〜5列目を削除
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.DeleteDim(Dim: Integer; const Range: TFlexRange): TFlexArray<T>;
 var
@@ -1456,14 +1456,14 @@ begin
   // 前半部のインデックスを収集
   for i := Self.Low(Dim) to Range.Low - 1 do
   begin
-    Indexes[d] := i; // [1..9]のうち[2..5]を削除 → [1,2,3,4]
+    Indexes[d] := i; // [1..9]のうち[3..5]を削除 → [1,2]
     Inc(d);
   end;
 
   // 後半部のインデックスを収集
   for i := Range.High + 1 to Self.High(Dim) do
   begin
-    Indexes[d] := i; // [1..9]のうち[2..5]を削除 → [6,7,8,9]
+    Indexes[d] := i; // [1..9]のうち[3..5]を削除 → [6,7,8,9]
     Inc(d);
   end;
 
@@ -1490,8 +1490,8 @@ begin
     raise Exception.CreateFmt('SliceDimRange: 抽出範囲が不正です。Range=[%d,%d], 範囲=%d..%d', [Range.Low, Range.High, Low(Dim), High(Dim)]);
 
   SetLength(Indexes, Range.Len);
-  for i := 0 to system.High(Indexes) do
-    Indexes[i] := Range.Low + i; // [2, 5] → [2,3,4,5]
+  for i := 0 to system.Length(Indexes) - 1 do
+    Indexes[i] := Range.Low + i; // [2..5] → [2,3,4,5]
 
   Result := SliceDimIndexes(Dim, Indexes);
 end;
@@ -1517,8 +1517,7 @@ begin
   Result := SliceDimIndexesCore(Dim, Indexes);
 
   // BaseIndexが対象次元のBaseIndexと等しい場合、Reshapeは不要
-  if BaseIndex = Result.Low(Dim) then
-    Exit;
+  if BaseIndex = Result.Low(Dim) then Exit;
 
   // 指定次元をBaseIndexに合わせてReshape
   NewRanges := Result.GetRanges;
