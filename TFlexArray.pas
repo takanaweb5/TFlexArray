@@ -19,8 +19,8 @@ type
   TCoords = array of Integer;  // 座標配列 [x, y, z, ...]
 
   TFlexDimension = record
-    Low, High, Stride: NativeInt;
-    function Len: NativeInt; inline;
+    Low, High, Stride: Integer;
+    function Len: Integer; inline;
   end;
   TFlexDimensions = TArray<TFlexDimension>;
   TFlexDimensionsHelper = record helper for TFlexDimensions
@@ -35,11 +35,11 @@ type
   TFlexArrayEnumerator<T> = class
   private
     FData: TArray<T>;
-    FTotalSize: NativeInt;
-    FIndex: NativeInt;
+    FTotalSize: Integer;
+    FIndex: Integer;
     function GetCurrent: T;
   public
-    constructor Create(const AData: TArray<T>; Size: NativeInt);
+    constructor Create(const AData: TArray<T>; Size: Integer);
     property Current: T read GetCurrent;
     function MoveNext: Boolean;
   end;
@@ -59,15 +59,15 @@ type
   private
     FData: TArray<T>;
     FDims: TFlexDimensions;  // 次元情報
-    FTotalSize: NativeInt;
+    FTotalSize: Integer;
     FIsView: Boolean;
 
-    function GetCoords(LinearIndex: NativeInt): TCoords;
-    function GetOffset(const Coords: array of Integer): NativeInt;
+    function GetCoords(LinearIndex: Integer): TCoords;
+    function GetOffset(const Coords: array of Integer): Integer;
     function GetValue(const Coords: array of Integer): T;
     procedure SetValue(const Coords: array of Integer; const Value: T);
-    function GetElement(Index: NativeInt): T; inline;
-    procedure SetElement(Index: NativeInt; const Value: T); inline;
+    function GetElement(Index: Integer): T; inline;
+    procedure SetElement(Index: Integer; const Value: T); inline;
     function GetDimensionCount: Integer; inline;
     function GetRanges: TFlexRanges;
     function ValueToStr(const V: T): string;
@@ -96,12 +96,12 @@ type
     function High: Integer; overload; // 1D
     function Low(Dim: Integer): Integer; overload; // nD
     function High(Dim: Integer): Integer; overload; // nD
-    function Len(Dim: Integer): NativeInt;
+    function Len(Dim: Integer): Integer;
 
     property Items[const Coords: array of Integer]: T read GetValue write SetValue; default;
-    property Elements[Index: NativeInt]: T read GetElement write SetElement;
+    property Elements[Index: Integer]: T read GetElement write SetElement;
     property DimensionCount: Integer read GetDimensionCount;
-    property TotalSize: NativeInt read FTotalSize;
+    property TotalSize: Integer read FTotalSize;
 
     procedure Reshape(const Shapes: array of Integer; BaseIndex: Integer);
     procedure ReshapeVector(BaseIndex: Integer); // 1D
@@ -210,7 +210,7 @@ end;
 // [引数] なし
 // [戻値] 配列サイズ
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexDimension.Len: NativeInt;
+function TFlexDimension.Len: Integer;
 begin
   Result := High - Low + 1;
 end;
@@ -241,7 +241,7 @@ end;
 // [引数] データの先頭ポインタ, 全要素数
 // [戻値] なし
 //////////////////////////////////////////////////////////////////////////////////////
-constructor TFlexArrayEnumerator<T>.Create(const AData: TArray<T>; Size: NativeInt);
+constructor TFlexArrayEnumerator<T>.Create(const AData: TArray<T>; Size: Integer);
 begin
   FData := AData;
   FTotalSize := Size;
@@ -282,7 +282,7 @@ end;
 procedure TFlexArray<T>.InitializeDimensions(const Ranges: TFlexRanges);
 var
   i: Integer;
-  CurrentStride: NativeInt;
+  CurrentStride: Integer;
 begin
   SetLength(FDims, System.Length(Ranges));  // 完全0ベース化
   CurrentStride := 1;
@@ -438,7 +438,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 procedure TFlexArray<T>.ReshapeRange(const Ranges: TFlexRanges);
 var
-  oldTotalSize: NativeInt;
+  oldTotalSize: Integer;
 begin
   oldTotalSize := Self.FTotalSize;
   InitializeDimensions(Ranges);
@@ -545,10 +545,10 @@ end;
 // [戻値] 各次元の座標配列（GetOffsetの逆の変換を行う）
 // [例] [[1, 3], [1, 2]] のとき GetCoords(0)=[1,1], GetCoords(1)=[1,2], GetCoords(2)=[2,1]
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.GetCoords(LinearIndex: NativeInt): TCoords;
+function TFlexArray<T>.GetCoords(LinearIndex: Integer): TCoords;
 var
   i: Integer;
-  TempIndex: NativeInt;
+  TempIndex: Integer;
 begin
   SetLength(Result, Self.DimensionCount);
   TempIndex := LinearIndex;
@@ -567,7 +567,7 @@ end;
 // [戻値] 線形インデックス（範囲外の場合は例外）
 // [例] [[1, 3], [1, 2]] のとき GetOffset([1,1])=0, GetOffset([1,2])=1, GetOffset([2,1])=2
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.GetOffset(const Coords: array of Integer): NativeInt;
+function TFlexArray<T>.GetOffset(const Coords: array of Integer): Integer;
 var
   i: Integer;
 begin
@@ -578,7 +578,7 @@ begin
   for i := 0 to Self.DimensionCount - 1 do
   begin
     if (FDims[i].Low <= Coords[i]) and (Coords[i] <= FDims[i].High) then
-      Result := Result + (NativeInt(Coords[i]) - FDims[i].Low) * FDims[i].Stride
+      Result := Result + (Integer(Coords[i]) - FDims[i].Low) * FDims[i].Stride
     else
       raise Exception.CreateFmt('GetOffset: 範囲外です。Dim=%d, Value=%d, Range=%d..%d', [i + 1, Coords[i], FDims[i].Low, FDims[i].High]);
   end;
@@ -609,7 +609,7 @@ end;
 // [引数] 0-based線形インデックス
 // [戻値] 指定位置の要素（範囲外の場合は例外）
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.GetElement(Index: NativeInt): T;
+function TFlexArray<T>.GetElement(Index: Integer): T;
 begin
   Result := FData[Index];
 end;
@@ -619,7 +619,7 @@ end;
 // [引数] 0-based線形インデックス, 設定する要素
 // [戻値] なし
 //////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.SetElement(Index: NativeInt; const Value: T);
+procedure TFlexArray<T>.SetElement(Index: Integer; const Value: T);
 begin
   FData[Index] := Value;
 end;
@@ -782,7 +782,7 @@ end;
 // [戻値] 配列サイズ
 // [備考] 利用者向けAPI（封印中）です。内部実装では FDims.Items[Dim].Len を使用してください。
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.Len(Dim: Integer): NativeInt;
+function TFlexArray<T>.Len(Dim: Integer): Integer;
 begin
   Result := FDims.Items[Dim].Len;
 end;
