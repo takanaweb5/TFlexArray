@@ -778,7 +778,7 @@ end;
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 指定次元の配列サイズを返す
-// [引数] 次元番号
+// [引数] 対象次元
 // [戻値] 配列サイズ
 // [備考] 利用者向けAPI（封印中）です。内部実装では FDims.Items[Dim].Len を使用してください。
 //////////////////////////////////////////////////////////////////////////////////////
@@ -813,7 +813,7 @@ end;
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 指定次元の最小インデックスを取得
-// [引数] 次元番号
+// [引数] 対象次元
 // [戻値] 最小インデックス
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.Low(Dim: Integer): Integer;
@@ -823,7 +823,7 @@ end;
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 指定次元の最大インデックスを取得
-// [引数] 次元番号
+// [引数] 対象次元
 // [戻値] 最大インデックス
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.High(Dim: Integer): Integer;
@@ -906,7 +906,7 @@ end;
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 指定次元をスライスして取得
-// [引数] 次元番号, 取得インデックス
+// [引数] 対象次元, 取得インデックス
 // [戻値] スライス配列（元の次元数より1次元少ない配列を生成）
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.SliceDim(Dim: Integer; Index: Integer): TFlexArray<T>;
@@ -1268,10 +1268,10 @@ begin
       'DemoteDimension: TargetDimは1から%dの範囲である必要があります', [DimensionCount]);
 
   // 削除する次元のサイズが1でなければならない
-  if FDims[TargetDim - 1].Len <> 1 then
+  if Self.Len(TargetDim) <> 1 then
     raise Exception.CreateFmt(
       'DemoteDimension: 削除する次元のサイズは1である必要があります。Dim=%d, Size=%d', 
-      [TargetDim, FDims[TargetDim - 1].Len]);
+      [TargetDim, Self.Len(TargetDim)]);
 
   // 現在の範囲を取得
   NewRanges := GetRanges;
@@ -1402,7 +1402,7 @@ end;
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 指定次元の指定位置に配列を挿入
-// [引数] Dim: 次元番号(1-based), Index: 挿入位置, Items: 挿入する配列
+// [引数] Dim: 対象次元(1-based), Index: 挿入位置, Items: 挿入する配列
 // [戻値] 挿入後の新しい配列
 // [使用例]
 //   3D配列[2,3,4]に次元1の位置2で[1,4]配列を挿入 → [3,3,4]配列
@@ -1433,7 +1433,7 @@ end;
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 指定次元の範囲を削除
-// [引数] Dim: 次元番号(1-based), Range: 削除範囲[Low, High]
+// [引数] Dim: 対象次元(1-based), Range: 削除範囲[Low, High]
 // [戻値] 削除後の新しい配列
 // [使用例]
 //   Result := Matrix.DeleteDim(2, [2, 5]); // 2〜5列目を削除
@@ -1472,7 +1472,7 @@ end;
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 指定次元の範囲を抽出
-// [引数] Dim: 次元番号(1-based), Range: 抽出範囲[Low, High]
+// [引数] Dim: 対象次元(1-based), Range: 抽出範囲[Low, High]
 // [戻値] 抽出後の新しい配列
 // [使用例]
 //   Result := Matrix.SliceDimRange(2, [2, 5]); // 2〜5列目を抽出
@@ -1498,7 +1498,7 @@ end;
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 指定次元のIndexの配列で指定した範囲を抽出
-// [引数] Dim: 次元番号(1-based), Indexes: 抽出するIndexの配列, BaseIndex: 基準インデックス
+// [引数] Dim: 対象次元(1-based), Indexes: 抽出するIndexの配列, BaseIndex: 基準インデックス
 // [戻値] 抽出後の新しい配列
 // [備考] BaseIndexの省略時はselfの該当次元のbaseを使用
 // [使用例]
@@ -1507,7 +1507,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.SliceDimIndexes(Dim: Integer; const Indexes: TArray<Integer>): TFlexArray<T>;
 begin
-  Result := SliceDimIndexes(Dim, Indexes, Self.FDims[Dim - 1].Low);
+  Result := SliceDimIndexes(Dim, Indexes, Self.Low(Dim));
 end;
 function TFlexArray<T>.SliceDimIndexes(Dim: Integer; const Indexes: TArray<Integer>; BaseIndex: Integer): TFlexArray<T>;
 var
@@ -1515,6 +1515,10 @@ var
   d: Integer;
 begin
   Result := SliceDimIndexesCore(Dim, Indexes);
+
+  // BaseIndexが対象次元のBaseIndexと等しい場合、Reshapeは不要
+  if BaseIndex = Result.Low(Dim) then
+    Exit;
 
   // 指定次元をBaseIndexに合わせてreshape
   SetLength(NewRanges, Result.DimensionCount);
@@ -1569,7 +1573,7 @@ begin
   begin
     if d = DimIdx then
     begin
-      if (Another.FTotalSize > 0) then
+      if Another.FTotalSize > 0 then
         // 対象の次元サイズ = Indexesのサイズ + Anotherのサイズ
         NewRanges[DimIdx] := [TargetDim.Low, TargetDim.Low + Length(Indexes) + Another.Len(Dim) - 1]
       else
@@ -1581,17 +1585,17 @@ begin
       NewRanges[d] := [FDims[d].Low, FDims[d].High];
   end;
 
-  if (Another.FTotalSize > 0) then
+  // BaseIndexを対象次元のBaseIndexで統一する
+  FlexIndexes := TFlexArray<Integer>.CreateFromArray(Indexes, TargetDim.Low);
+  IsAnotherArea := TFlexArray<Boolean>.CreateFromRange(NewRanges[DimIdx]); // デフォルトはFalse
+  if Another.FTotalSize > 0 then
   begin
     // BaseIndexを対象次元のBaseIndexで統一する
-    FlexIndexes := TFlexArray<Integer>.CreateFromArray(Indexes, TargetDim.Low);
-    MappedIndexes := TFlexArray<Integer>.Create([TargetDim.Len + Another.Len(Dim)], TargetDim.Low);
-    IsAnotherArea := TFlexArray<Boolean>.Create([TargetDim.Len + Another.Len(Dim)], TargetDim.Low);
+    MappedIndexes := TFlexArray<Integer>.CreateFromRange(NewRanges[DimIdx]);
     d := TargetDim.Low;
 
     for i := FlexIndexes.Low to Index - 1 do begin
       MappedIndexes[d] := FlexIndexes[i];
-      IsAnotherArea[d] := False;
       Inc(d);
     end;
 
@@ -1603,15 +1607,12 @@ begin
 
     for i := Index to FlexIndexes.High do begin
       MappedIndexes[d] := FlexIndexes[i];
-      IsAnotherArea[d] := False;
       Inc(d);
     end;
   end
   else
   begin
-    MappedIndexes := TFlexArray<Integer>.CreateFromArray(Indexes, TargetDim.Low);
-    // デフォルトはFalseのため設定処理は不要
-    IsAnotherArea := TFlexArray<Boolean>.Create([TargetDim.Len], TargetDim.Low);
+    MappedIndexes := FlexIndexes;
   end;
 
   Result := TFlexArray<T>.CreateFromRange(NewRanges);
