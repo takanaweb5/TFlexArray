@@ -1194,7 +1194,7 @@ begin
       // 次元を入れ替え（注意：1-basedインデックスを0-basedインデックスに変換）
       SelfCoords[NewDims[d] - 1] := ResultCoords[d];
     end;
-    Result.Elements[i] := Self.Elements[GetOffset(SelfCoords)];
+    Result.Elements[i] := Self.Elements[Self.GetOffset(SelfCoords)];
     Result.IncCoords(ResultCoords);
   end;
 end;
@@ -1533,12 +1533,12 @@ end;
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 指定次元のIndexの配列で指定した範囲を抽出または挿入
-// [引数] Dim: 次元番号(1-based), Indexes: 抽出するIndexの配列,
+// [引数] Dim: 対象次元(1-based), Indexes: 抽出するIndexの配列,
 //        Another: 挿入する配列(省略時は抽出のみ), Index: 挿入開始位置
 // [戻値] 抽出後の新しい配列
 // [使用例]
 //   Result := Matrix.SliceDimIndexesCore(2, [1, 3, 5]);           // 1,3,5列目を抽出
-//   Result := Matrix.SliceDimIndexesCore(2, [1, 2, 3], Insert, 2); // 2列目からInsertを挿入
+//   Result := Matrix.SliceDimIndexesCore(1, [1, 2, 3], Another, 2); // 2行目からAnotherを挿入
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.SliceDimIndexesCore(Dim: Integer; const Indexes: TArray<Integer>): TFlexArray<T>;
 var
@@ -1555,8 +1555,8 @@ var
   ResultCoords: TCoords;
   DimIdx: Integer;
   bak: Integer;
-  AnotherLow, AnotherHigh: Integer;
   FlexIndexes, MappedIndexes: TFlexArray<Integer>;
+  IsAnotherArea: TFlexArray<Boolean>;
   TargetDim: TFlexDimension;
 begin
   // 1-based to 0-based
@@ -1570,10 +1570,10 @@ begin
     if d = DimIdx then
     begin
       if (Another.FTotalSize > 0) then
-        // 結果の次元サイズ = Indexesのサイズ + Anotherのサイズ
+        // 対象の次元サイズ = Indexesのサイズ + Anotherのサイズ
         NewRanges[DimIdx] := [TargetDim.Low, TargetDim.Low + Length(Indexes) + Another.Len(Dim) - 1]
       else
-        // 抽出する次元はIndexesの範囲に合わせる
+        // 対象の次元はIndexesの範囲に合わせる
         NewRanges[DimIdx] := [TargetDim.Low, TargetDim.Low + Length(Indexes) - 1];
     end
     else
@@ -1583,38 +1583,35 @@ begin
 
   if (Another.FTotalSize > 0) then
   begin
-    // BaseIndexを該当次元のBaseIndexで統一する
+    // BaseIndexを対象次元のBaseIndexで統一する
     FlexIndexes := TFlexArray<Integer>.CreateFromArray(Indexes, TargetDim.Low);
     MappedIndexes := TFlexArray<Integer>.Create([TargetDim.Len + Another.Len(Dim)], TargetDim.Low);
-
-    // Indexesの前半を設定
+    IsAnotherArea := TFlexArray<Boolean>.Create([TargetDim.Len + Another.Len(Dim)], TargetDim.Low);
     d := TargetDim.Low;
+
     for i := FlexIndexes.Low to Index - 1 do begin
       MappedIndexes[d] := FlexIndexes[i];
+      IsAnotherArea[d] := False;
       Inc(d);
     end;
 
-    // Anotherの範囲を設定
     for i := Another.Low(Dim) to Another.High(Dim) do begin
       MappedIndexes[d] := i;
+      IsAnotherArea[d] := True;
       Inc(d);
     end;
 
-    // Indexesの後半を設定
     for i := Index to FlexIndexes.High do begin
       MappedIndexes[d] := FlexIndexes[i];
+      IsAnotherArea[d] := False;
       Inc(d);
     end;
-
-    // Anotherの範囲を設定
-    AnotherLow := Index;
-    AnotherHigh := Index + Another.Len(Dim) - 1;
   end
   else
   begin
     MappedIndexes := TFlexArray<Integer>.CreateFromArray(Indexes, TargetDim.Low);
-    AnotherLow := 0;
-    AnotherHigh := 0;
+    // デフォルトはFalseのため設定処理は不要
+    IsAnotherArea := TFlexArray<Boolean>.Create([TargetDim.Len], TargetDim.Low);
   end;
 
   Result := TFlexArray<T>.CreateFromRange(NewRanges);
@@ -1625,11 +1622,9 @@ begin
     bak := ResultCoords[DimIdx];
     ResultCoords[DimIdx] := MappedIndexes[bak];
 
-    if (Another.FTotalSize > 0) and (AnotherLow <= bak) and (bak <= AnotherHigh) then
-      // Anotherの範囲内
+    if IsAnotherArea[bak] then
       Result.Elements[i] := Another.Elements[Another.GetOffset(ResultCoords)]
     else
-      // Selfの範囲内
       Result.Elements[i] := Self.Elements[Self.GetOffset(ResultCoords)];
 
     ResultCoords[DimIdx] := bak;
