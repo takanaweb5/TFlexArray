@@ -769,7 +769,7 @@ var
   Ranges: TFlexRanges;
   Parts: TArray<string>;
 begin
-  Ranges := GetRanges;
+  Ranges := Self.GetRanges;
   SetLength(Parts, System.Length(Ranges));
   for i := 0 to System.High(Ranges) do
     Parts[i] := Format('%d..%d', [Ranges[i].Low, Ranges[i].High]);
@@ -1237,7 +1237,7 @@ begin
       'PromoteDimension: TargetDimは1から%dの範囲である必要があります', [DimensionCount + 1]);
 
   // 現在の範囲を取得
-  NewRanges := GetRanges;
+  NewRanges := Self.GetRanges;
 
   // TargetDimにサイズ1の次元を挿入
   SetLength(NewRanges, Length(NewRanges) + 1);
@@ -1274,7 +1274,7 @@ begin
       [TargetDim, Self.Len(TargetDim)]);
 
   // 現在の範囲を取得
-  NewRanges := GetRanges;
+  NewRanges := Self.GetRanges;
   
   // TargetDimの次元を削除
   for d := TargetDim-1 to system.High(NewRanges)-1 do
@@ -1520,17 +1520,9 @@ begin
   if BaseIndex = Result.Low(Dim) then
     Exit;
 
-  // 指定次元をBaseIndexに合わせてreshape
-  SetLength(NewRanges, Result.DimensionCount);
-  for d := 0 to System.High(NewRanges) do
-  begin
-    if d = Dim - 1 then
-      // 指定次元のみBaseIndexを基準に
-      NewRanges[d] := [BaseIndex, BaseIndex + Length(Indexes) - 1]
-    else
-      // 他の次元は元のまま
-      NewRanges[d] := [Result.FDims[d].Low, Result.FDims[d].High];
-  end;
+  // 指定次元をBaseIndexに合わせてReshape
+  NewRanges := Result.GetRanges;
+  NewRanges[Dim - 1] := [BaseIndex, BaseIndex + Result.Len(Dim) - 1];
 
   Result.ReshapeRange(NewRanges);
 end;
@@ -1567,23 +1559,14 @@ begin
   DimIdx := Dim - 1;
   TargetDim := Self.FDims[DimIdx];
 
-  // NewRangesの計算
-  SetLength(NewRanges, DimensionCount);
-  for d := 0 to System.High(NewRanges) do
-  begin
-    if d = DimIdx then
-    begin
-      if Another.FTotalSize > 0 then
-        // 対象の次元サイズ = Indexesのサイズ + Anotherのサイズ
-        NewRanges[DimIdx] := [TargetDim.Low, TargetDim.Low + Length(Indexes) + Another.Len(Dim) - 1]
-      else
-        // 対象の次元はIndexesの範囲に合わせる
-        NewRanges[DimIdx] := [TargetDim.Low, TargetDim.Low + Length(Indexes) - 1];
-    end
-    else
-      // 他の次元は元の配列の範囲を維持
-      NewRanges[d] := [FDims[d].Low, FDims[d].High];
-  end;
+  // NewRangesの設定
+  NewRanges := Self.GetRanges;
+  if Another.FTotalSize > 0 then
+    // 対象の次元サイズ = Indexesのサイズ + Anotherのサイズ
+    NewRanges[DimIdx] := [TargetDim.Low, TargetDim.Low + Length(Indexes) + Another.Len(Dim) - 1]
+  else
+    // 対象の次元はIndexesの範囲に合わせる
+    NewRanges[DimIdx] := [TargetDim.Low, TargetDim.Low + Length(Indexes) - 1];
 
   // BaseIndexを対象次元のBaseIndexで統一する
   FlexIndexes := TFlexArray<Integer>.CreateFromArray(Indexes, TargetDim.Low);
@@ -1670,7 +1653,7 @@ var
   i: Integer;
   CurrentCoords: TCoords;
 begin
-  Result := TFlexArray<TResult>.CreateFromRange(GetRanges);
+  Result := TFlexArray<TResult>.CreateFromRange(Self.GetRanges);
   Result.InitializeCoords(CurrentCoords);
   for i := 0 to FTotalSize - 1 do
   begin
