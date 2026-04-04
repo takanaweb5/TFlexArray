@@ -6,7 +6,7 @@ uses
   System.SysUtils, System.Generics.Collections, System.Math,
   System.Rtti,    // TValue のため
   System.TypInfo; // tkString などの型判定（TValue.Kind）のため
-  
+
 type
   TFlexRange = TArray<Integer>;  // [Low, High] のペア
   TFlexRangeHelper = record helper for TFlexRange
@@ -79,6 +79,7 @@ type
     function GetCompatibleBaseIndex(const Another: TFlexArray<T>): Integer;
     function RangesStringToRanges(const RangeStr: string): TFlexRanges;
     function ShapesToRanges(const Shapes: array of Integer; BaseIndex: Integer): TFlexRanges;
+    function TransposeCore(const NewDims: array of Integer): TFlexArray<T>;
     function SliceDimIndexesCore(Dim: Integer; const Indexes: TArray<Integer>): TFlexArray<T>; overload;
     function SliceDimIndexesCore(Dim: Integer; const Indexes: TArray<Integer>; const Another: TFlexArray<T>; Index: Integer): TFlexArray<T>; overload;
     function GetEnumerator: TFlexArrayEnumerator<T>;
@@ -142,6 +143,7 @@ type
     function DeleteRowRange(const Range: TFlexRange): TFlexArray<T>;
     function DeleteColRange(const Range: TFlexRange): TFlexArray<T>;
 
+    function Transpose(Dim1, Dim2: Integer): TFlexArray<T>; overload; // nD
     function Transpose(const NewDims: array of Integer): TFlexArray<T>; overload; // nD
     function Transpose(): TFlexArray<T>; overload; // 2D
 
@@ -1151,6 +1153,36 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
+// [概要] 2つの指定次元を入れ替える
+// [引数] Dim1: , Dim2: 入れ替える次元番号(1-based)
+// [戻値] 次元を入れ替えた配列
+// [使用例] Array3D.Transpose(1, 3)  // 次元1と3を入れ替える
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.Transpose(Dim1, Dim2: Integer): TFlexArray<T>;
+var
+  NewDims: array of Integer;
+  i: Integer;
+begin
+  // パラメータ検証
+  if (Dim1 < 1) or (Dim1 > DimensionCount) then
+    raise Exception.CreateFmt('Transpose: 次元指定 %d が範囲外です。', [Dim1]);
+  if (Dim2 < 1) or (Dim2 > DimensionCount) then
+    raise Exception.CreateFmt('Transpose: 次元指定 %d が範囲外です。', [Dim2]);
+  if Dim1 = Dim2 then
+    raise Exception.Create('Transpose: 同じ次元は入れ替えできません。');
+
+  SetLength(NewDims, DimensionCount);
+  for i := 0 to System.Length(NewDims) - 1 do
+    NewDims[i] := i + 1; // デフォルトは [1, 2, 3, ...]
+
+  // 指定された2つの次元を入れ替え
+  NewDims[Dim1 - 1] := Dim2;
+  NewDims[Dim2 - 1] := Dim1;
+
+  Result := TransposeCore(NewDims); // 次元1と3を入れ替える時、[3,2,1]
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
 // [概要] 配列の次元を入れ替え
 // [引数] 新しい次元の順序 指定例：[1, 2, 3] -> [3, 1, 2]
 // [戻値] 転置後の配列
@@ -1158,9 +1190,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.Transpose(const NewDims: array of Integer): TFlexArray<T>;
 var
-  i, d: Integer;
-  NewRanges: TFlexRanges;
-  ResultCoords, SelfCoords: TCoords;
+  i: Integer;
   DimUsed: array of Boolean;
 begin
   // 整合性チェック
@@ -1179,10 +1209,37 @@ begin
     if not DimUsed[i] then
       raise Exception.CreateFmt('Transpose: 次元 %d が指定されていません。', [i + 1]);
 
+  Result := TransposeCore(NewDims);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 2次元配列専用の転置
+// [引数] なし
+// [戻値] 行列を入れ替えた配列
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.Transpose: TFlexArray<T>;
+begin
+  CheckDimension(2);
+  Result := TransposeCore([2, 1]);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 配列の次元を入れ替え
+// [引数] 新しい次元の順序 指定例：[1, 2, 3] -> [3, 1, 2]
+// [戻値] 転置後の配列
+// [備考] パラメータ検証は呼び出し元で実行済みであること
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.TransposeCore(const NewDims: array of Integer): TFlexArray<T>;
+var
+  i, d: Integer;
+  NewRanges: TFlexRanges;
+  ResultCoords, SelfCoords: TCoords;
+begin
   // NewRanges の計算
   SetLength(NewRanges, DimensionCount);
   for i := 0 to system.High(NewRanges) do
     NewRanges[i] := [Self.Low(NewDims[i]), Self.High(NewDims[i])];
+
   Result := TFlexArray<T>.CreateFromRange(NewRanges);
 
   SetLength(SelfCoords, DimensionCount);
@@ -1197,17 +1254,6 @@ begin
     Result.Elements[i] := Self.Elements[Self.GetOffset(SelfCoords)];
     Result.IncCoords(ResultCoords);
   end;
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
-// [概要] 2次元配列専用の転置
-// [引数] なし
-// [戻値] 行列を入れ替えた配列
-//////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.Transpose: TFlexArray<T>;
-begin
-  CheckDimension(2);
-  Result := Transpose([2, 1]);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1548,33 +1594,32 @@ var
   i, d: Integer;
   NewRanges: TFlexRanges;
   ResultCoords: TCoords;
-  DimIdx: Integer;
+  DimIdx, TargetDimBaseIdx: Integer;
   bak: Integer;
   FlexIndexes, MappedIndexes: TFlexArray<Integer>;
   IsAnotherArea: TFlexArray<Boolean>;
-  TargetDim: TFlexDimension;
 begin
   // 1-based to 0-based
   DimIdx := Dim - 1;
-  TargetDim := Self.FDims[DimIdx];
+  TargetDimBaseIdx := Self.FDims[DimIdx].Low;
 
   // NewRangesの設定
   NewRanges := Self.GetRanges;
   if Another.FTotalSize > 0 then
     // 対象の次元サイズ = Indexesのサイズ + Anotherのサイズ
-    NewRanges[DimIdx] := [TargetDim.Low, TargetDim.Low + Length(Indexes) + Another.Len(Dim) - 1]
+    NewRanges[DimIdx] := [TargetDimBaseIdx, TargetDimBaseIdx + Length(Indexes) + Another.Len(Dim) - 1]
   else
     // 対象の次元はIndexesの範囲に合わせる
-    NewRanges[DimIdx] := [TargetDim.Low, TargetDim.Low + Length(Indexes) - 1];
+    NewRanges[DimIdx] := [TargetDimBaseIdx, TargetDimBaseIdx + Length(Indexes) - 1];
 
   // BaseIndexを対象次元のBaseIndexで統一する
-  FlexIndexes := TFlexArray<Integer>.CreateFromArray(Indexes, TargetDim.Low);
+  FlexIndexes := TFlexArray<Integer>.CreateFromArray(Indexes, TargetDimBaseIdx);
   IsAnotherArea := TFlexArray<Boolean>.CreateFromRange(NewRanges[DimIdx]); // デフォルトはFalse
   if Another.FTotalSize > 0 then
   begin
     // BaseIndexを対象次元のBaseIndexで統一する
     MappedIndexes := TFlexArray<Integer>.CreateFromRange(NewRanges[DimIdx]);
-    d := TargetDim.Low;
+    d := TargetDimBaseIdx;
 
     for i := FlexIndexes.Low to Index - 1 do begin
       MappedIndexes[d] := FlexIndexes[i];
