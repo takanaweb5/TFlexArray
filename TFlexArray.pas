@@ -64,8 +64,10 @@ type
 
     function GetCoords(LinearIndex: Integer): TCoords;
     function GetOffset(const Coords: array of Integer): Integer;
-    function GetValue(const Coords: array of Integer): T;
-    procedure SetValue(const Coords: array of Integer; const Value: T);
+    function GetValue(const Coords: array of Integer): T; overload;
+    procedure SetValue(const Coords: array of Integer; const Value: T); overload;
+    function GetValue(const Coords: TCoords): T;  overload;
+    procedure SetValue(const Coords: TCoords; const Value: T);  overload;
     function GetElement(Index: Integer): T; inline;
     procedure SetElement(Index: Integer; const Value: T); inline;
     function GetDimensionCount: Integer; inline;
@@ -99,6 +101,7 @@ type
     function High(Dim: Integer): Integer; overload; // nD
     function Len(Dim: Integer): Integer;
 
+    property ItemAt[const Coords: TCoords]: T read GetValue write SetValue;
     property Items[const Coords: array of Integer]: T read GetValue write SetValue; default;
     property Elements[Index: Integer]: T read GetElement write SetElement;
     property DimensionCount: Integer read GetDimensionCount;
@@ -587,21 +590,31 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
-// [概要] 指定座標の値を取得
-// [引数] 各次元の座標配列
+// [概要] 指定座標の値を取得（オーバーロード）
+// [引数] Coords: 各次元の座標配列（array of Integer または TCoords）
 // [戻値] 座標に対応する値（範囲外の場合は例外）
+// [備考] TCoordsは動的配列変数用
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.GetValue(const Coords: array of Integer): T;
 begin
   Result := Self.Elements[GetOffset(Coords)];
 end;
+function TFlexArray<T>.GetValue(const Coords: TCoords): T;
+begin
+  Result := Self.Elements[GetOffset(Coords)];
+end;
 
 //////////////////////////////////////////////////////////////////////////////////////
-// [概要] 指定座標に値を設定
-// [引数] 各次元の座標配列, 設定する値
+// [概要] 指定座標に値を設定（オーバーロード）
+// [引数] Coords: 各次元の座標配列（array of Integer または TCoords）, Value: 設定する値
 // [戻値] なし
+// [備考] TCoordsは動的配列変数用
 //////////////////////////////////////////////////////////////////////////////////////
 procedure TFlexArray<T>.SetValue(const Coords: array of Integer; const Value: T);
+begin
+  Self.Elements[GetOffset(Coords)] := Value;
+end;
+procedure TFlexArray<T>.SetValue(const Coords: TCoords; const Value: T);
 begin
   Self.Elements[GetOffset(Coords)] := Value;
 end;
