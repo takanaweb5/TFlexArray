@@ -76,8 +76,6 @@ type
     procedure InitializeDimensions(const Ranges: TFlexRanges);
     procedure CheckDimension(ExpectedDim: Integer);
     procedure CheckViewMode;
-    procedure InitializeCoords(var Coords: TCoords);
-    procedure IncCoords(var Coords: TCoords);
     function GetCompatibleBaseIndex(const Another: TFlexArray<T>): Integer;
     function RangesStringToRanges(const RangeStr: string): TFlexRanges;
     function ShapesToRanges(const Shapes: array of Integer; BaseIndex: Integer): TFlexRanges;
@@ -106,6 +104,9 @@ type
     property Elements[Index: Integer]: T read GetElement write SetElement;
     property DimensionCount: Integer read GetDimensionCount;
     property TotalSize: Integer read FTotalSize;
+
+    procedure InitializeCoords(var Coords: TCoords);
+    function IncCoords(var Coords: TCoords): Boolean;
 
     procedure Reshape(const Shapes: array of Integer; BaseIndex: Integer);
     procedure ReshapeVector(BaseIndex: Integer); // 1D
@@ -896,12 +897,13 @@ end;
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 座標をインクリメント
-// [引数] 現在の座標配列
-// [戻値] なし
+// [引数] Coords: 現在の座標配列
+// [戻値] 1周した場合にtrue、それ以外はfalse
 // [備考] 2次元配列 [1..3, 1..2] の場合:
-//        [1,1] → [1,2] → [2,1] → [2,2] → [3,1] → [3,2]
+//        [1,1] → [1,2] → [2,1] → [2,2] → [3,1] → [3,2] → [1,1](true)
+// [使用例] repeat-untilループでの全要素走査に最適
 //////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.IncCoords(var Coords: TCoords);
+function TFlexArray<T>.IncCoords(var Coords: TCoords): Boolean;
 var
   d: Integer;
 begin
@@ -911,12 +913,19 @@ begin
     Inc(Coords[d]);
 
     // 上限を超えていないなら終了
-    if Coords[d] <= Self.FDims[d].High then Exit;
+    if Coords[d] <= Self.FDims[d].High then
+    begin
+      Result := False;  // 1周していない
+      Exit;
+    end;
 
     // 上限を超えたので、現在の次元を最小値(Low)にリセットし、
     // ループを継続して一つ左の次元（上位桁）を Inc する
     Coords[d] := Self.FDims[d].Low;
   end;
+  
+  // すべての次元がリセットされた＝1周した
+  Result := True;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
