@@ -20,6 +20,7 @@ type
 
   TFlexDimension = record
     Low, High, Stride: Integer;
+    RealIndex: Integer;
     function Len: Integer; inline;
   end;
   TFlexDimensions = TArray<TFlexDimension>;
@@ -71,6 +72,8 @@ type
     function GetElement(Index: Integer): T; inline;
     procedure SetElement(Index: Integer; const Value: T); inline;
     function GetDimensionCount: Integer; inline;
+    function GetIsLogicalTransposed: Boolean;
+    procedure ValidateTransposeDimensions(const NewDims: array of Integer);
     function GetRanges: TFlexRanges;
     function ValueToStr(const V: T): string;
     procedure InitializeDimensions(const Ranges: TFlexRanges);
@@ -150,6 +153,9 @@ type
     function Transpose(Dim1, Dim2: Integer): TFlexArray<T>; overload; // nD
     function Transpose(const NewDims: array of Integer): TFlexArray<T>; overload; // nD
     function Transpose(): TFlexArray<T>; overload; // 2D
+    procedure LogicalTranspose(const NewDims: array of Integer);
+    procedure ResetTranspose;
+    property IsLogicalTransposed: Boolean read GetIsLogicalTransposed;
 
     function Concat(const Another: TFlexArray<T>; TargetDim: Integer): TFlexArray<T>;  // nD
     function HStack(const Another: TFlexArray<T>): TFlexArray<T>;  // 2D
@@ -228,7 +234,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexDimensionsHelper.GetDimension(Index: Integer): TFlexDimension;
 begin
-  Result := Self[Index - 1];  // 1ベース→0ベース変換
+  Result := Self[Self[Index - 1].RealIndex];  // 1ベース→0ベース変換
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -238,7 +244,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 procedure TFlexDimensionsHelper.SetDimension(Index: Integer; const Value: TFlexDimension);
 begin
-  Self[Index - 1] := Value;  // 1ベース→0ベース変換
+  Self[Self[Index - 1].RealIndex] := Value;  // 1ベース→0ベース変換
 end;
 
 { TFlexArrayEnumerator<T> }
@@ -308,6 +314,7 @@ begin
     FDims[i].Low    := Ranges[i].Low;    // 0ベースで格納
     FDims[i].High   := Ranges[i].High;
     FDims[i].Stride := CurrentStride;
+    FDims[i].RealIndex := i;  // RealIndexを自然順序で初期化
 
     // 全要素数を累積計算
     CurrentStride := CurrentStride * Ranges[i].Len;
@@ -515,7 +522,7 @@ begin
   // 現在の形状を取得
   SetLength(Shapes, Self.DimensionCount);
   for i := 0 to system.High(Shapes) do
-    Shapes[i] := Self.FDims[i].Len; // FDimsは0ベース
+    Shapes[i] := Self.FDims.Items[i + 1].Len; // 論理次元アクセス（1-base）
 
   Reshape(Shapes, BaseIndex);
 end;
@@ -530,18 +537,18 @@ function TFlexArray<T>.GetCompatibleBaseIndex(const Another: TFlexArray<T>): Int
 var
   i: Integer;
 begin
-  Result := Self.FDims[0].Low;
+  Result := Self.FDims.Items[1].Low;  // 論理1次元のLow値
 
-  for i := 0 to Self.DimensionCount - 1 do
+  for i := 1 to Self.DimensionCount do
   begin
-    if Self.FDims[i].Low <> Result then
+    if Self.FDims.Items[i].Low <> Result then
       raise Exception.Create('GetCompatibleBaseIndex: 各配列のすべての次元で同じベースインデックスを使用する必要があります。混合ベースは未対応です。');
   end;
 
-  for i := 0 to Another.DimensionCount - 1 do
+  for i := 1 to Another.DimensionCount do
   begin
-    if Another.FDims[i].Low <> Result then
-      raise Exception.CreateFmt('GetCompatibleBaseIndex: 異なるベースインデックスの配列は結合できません。Self=%d, Another=%d', [Result, Another.FDims[i].Low]);
+    if Another.FDims.Items[i].Low <> Result then
+      raise Exception.CreateFmt('GetCompatibleBaseIndex: 異なるベースインデックスの配列は結合できません。Self=%d, Another=%d', [Result, Another.FDims.Items[i].Low]);
   end;
 end;
 
@@ -555,15 +562,17 @@ function TFlexArray<T>.GetCoords(LinearIndex: Integer): TCoords;
 var
   i: Integer;
   TempIndex: Integer;
+  DimIdx: Integer;
 begin
   SetLength(Result, Self.DimensionCount);
   TempIndex := LinearIndex;
 
   // 末尾の次元から順に割っていく（GetOffsetの逆工程）
-  for i := system.High(Result) downto 0 do
+  for i := system.Length(Result) - 1 downto 0 do
   begin
-    Result[i] := (TempIndex mod FDims[i].Len) + FDims[i].Low; // FDimsは0ベース
-    TempIndex := TempIndex div FDims[i].Len;
+    DimIdx := i + 1;  // 論理次元インデックス
+    Result[i] := (TempIndex mod FDims.Items[DimIdx].Len) + FDims.Items[DimIdx].Low; // 論理次元アクセス
+    TempIndex := TempIndex div FDims.Items[DimIdx].Len;
   end;
 end;
 
@@ -576,6 +585,7 @@ end;
 function TFlexArray<T>.GetOffset(const Coords: array of Integer): Integer;
 var
   i: Integer;
+  DimIdx: Integer;
 begin
   if System.Length(Coords) <> Self.DimensionCount then
     raise Exception.CreateFmt('GetOffset: 座標数が次元数と一致しません。Coords=%d, Dims=%d', [System.Length(Coords), Self.DimensionCount]);
@@ -583,10 +593,11 @@ begin
   Result := 0;
   for i := 0 to Self.DimensionCount - 1 do
   begin
-    if (FDims[i].Low <= Coords[i]) and (Coords[i] <= FDims[i].High) then
-      Result := Result + (Integer(Coords[i]) - FDims[i].Low) * FDims[i].Stride
+    DimIdx := i + 1;  // 論理次元インデックス
+    if (FDims.Items[DimIdx].Low <= Coords[i]) and (Coords[i] <= FDims.Items[DimIdx].High) then
+      Result := Result + (Integer(Coords[i]) - FDims.Items[DimIdx].Low) * FDims.Items[DimIdx].Stride
     else
-      raise Exception.CreateFmt('GetOffset: 範囲外です。Dim=%d, Value=%d, Range=%d..%d', [i + 1, Coords[i], FDims[i].Low, FDims[i].High]);
+      raise Exception.CreateFmt('GetOffset: 範囲外です。Dim=%d, Value=%d, Range=%d..%d', [DimIdx, Coords[i], FDims.Items[DimIdx].Low, FDims.Items[DimIdx].High]);
   end;
 end;
 
@@ -682,7 +693,7 @@ begin
     Exit(Format('%d次元配列です', [Self.DimensionCount]));
 
   // 1〜3次元の共通処理
-  SetLength(Rows, FDims[0].Len);
+  SetLength(Rows, FDims.Items[1].Len);  // 論理1次元のサイズ
   i := 0;
   for r := Low(1) to High(1) do
   begin
@@ -812,7 +823,7 @@ function TFlexArray<T>.Low: Integer;
 begin
   if System.Length(FDims) <> 1 then
     raise Exception.Create('多次元配列です。次元を明示してください（例: Low(1)）。');
-  Result := FDims[0].Low;
+  Result := FDims.Items[1].Low;  // 論理1次元アクセスに統一
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -824,7 +835,7 @@ function TFlexArray<T>.High: Integer;
 begin
   if System.Length(FDims) <> 1 then
     raise Exception.Create('多次元配列です。次元を明示してください（例: High(1)）。');
-  Result := FDims[0].High;
+  Result := FDims.Items[1].High;  // 論理1次元アクセスに統一
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -867,8 +878,8 @@ var
   i: Integer;
 begin
   SetLength(Result, Self.DimensionCount);
-  for i := 0 to system.High(Result) do
-    Result[i] := [FDims[i].Low, FDims[i].High]; // FDimsは0ベース
+  for i := 0 to system.Length(Result) - 1 do
+    Result[i] := [FDims.Items[i + 1].Low, FDims.Items[i + 1].High]; // 論理次元アクセス
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -891,8 +902,8 @@ var
   i: Integer;
 begin
   SetLength(Coords, Self.DimensionCount);
-  for i := 0 to system.High(Coords) do
-    Coords[i] := Self.FDims[i].Low;  // FDimsは0ベース
+  for i := 0 to system.Length(Coords) - 1 do
+    Coords[i] := Self.FDims.Items[i + 1].Low;  // 論理次元アクセス
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -906,14 +917,16 @@ end;
 function TFlexArray<T>.IncCoords(var Coords: TCoords): Boolean;
 var
   d: Integer;
+  DimIdx: Integer;
 begin
   // 一番右側の次元（最小単位）から順にチェック
   for d := system.High(Coords) downto 0 do
   begin
     Inc(Coords[d]);
+    DimIdx := d + 1;  // 論理次元インデックス
 
     // 上限を超えていないなら終了
-    if Coords[d] <= Self.FDims[d].High then
+    if Coords[d] <= Self.FDims.Items[DimIdx].High then
     begin
       Result := False;  // 1周していない
       Exit;
@@ -921,7 +934,7 @@ begin
 
     // 上限を超えたので、現在の次元を最小値(Low)にリセットし、
     // ループを継続して一つ左の次元（上位桁）を Inc する
-    Coords[d] := Self.FDims[d].Low;
+    Coords[d] := Self.FDims.Items[DimIdx].Low;
   end;
   
   // すべての次元がリセットされた＝1周した
@@ -1211,26 +1224,8 @@ end;
 // [備考] NewDims は「1..次元数」の並べ替え（重複なし）を、次元数分指定します。
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.Transpose(const NewDims: array of Integer): TFlexArray<T>;
-var
-  i: Integer;
-  DimUsed: array of Boolean;
 begin
-  // 整合性チェック
-  if System.Length(NewDims) <> Self.DimensionCount then
-    raise Exception.Create('Transpose: 指定された軸の数が配列の次元数と一致しません。');
-
-  // すべての次元が使用されているかチェック
-  SetLength(DimUsed, DimensionCount);
-  for i := 0 to system.High(DimUsed) do
-  begin
-    if (NewDims[i] < 1) or (NewDims[i] > DimensionCount) then
-      raise Exception.CreateFmt('Transpose: 次元指定 %d が範囲外です。', [NewDims[i]]);
-    DimUsed[NewDims[i] - 1] := True;
-  end;
-  for i := 0 to system.High(DimUsed) do
-    if not DimUsed[i] then
-      raise Exception.CreateFmt('Transpose: 次元 %d が指定されていません。', [i + 1]);
-
+  ValidateTransposeDimensions(NewDims);
   Result := TransposeCore(NewDims);
 end;
 
@@ -1276,6 +1271,88 @@ begin
     Result.Elements[i] := Self.Elements[Self.GetOffset(SelfCoords)];
     Result.IncCoords(ResultCoords);
   end;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 論理転置を実行する（データ移動なし）
+// [引数] NewDims: 新しい次元順序 [論理1次元→物理X次元, 論理2次元→物理Y次元, ...]
+// [戻値] なし
+// [使用例] LogicalTranspose([3, 1, 2])  // 論理1→物理3, 論理2→物理1, 論理3→物理2
+//////////////////////////////////////////////////////////////////////////////////////
+procedure TFlexArray<T>.LogicalTranspose(const NewDims: array of Integer);
+var
+  i: Integer;
+begin
+  ValidateTransposeDimensions(NewDims);
+
+  // RealIndexを再設定（論理次元i → 物理次元NewDims[i]）
+  for i := 0 to DimensionCount - 1 do
+    FDims[i].RealIndex := NewDims[i] - 1;  // 1-based→0-based
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 論理転置されているか判定する
+// [引数] なし
+// [戻値] 論理転置されている場合はTrue
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.GetIsLogicalTransposed: Boolean;
+var
+  i: Integer;
+begin
+  for i := 0 to DimensionCount - 1 do
+    if FDims[i].RealIndex <> i then
+      Exit(True);
+  Result := False;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 論理転置をリセットして自然順序に戻す
+// [引数] なし
+// [戻値] なし
+// [備考] 論理転置されていない場合は例外
+//////////////////////////////////////////////////////////////////////////////////////
+procedure TFlexArray<T>.ResetTranspose;
+var
+  i: Integer;
+begin
+  if not IsLogicalTransposed then
+    raise Exception.Create('ResetTranspose: 論理転置されていません。');
+    
+  // RealIndexを自然順序に直接設定
+  for i := 0 to DimensionCount - 1 do
+    FDims[i].RealIndex := i;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 転置用の次元指定を検証する
+// [引数] NewDims: 検証する次元配列
+// [戻値] なし
+// [備考] TransposeとLogicalTransposeで共通使用
+//////////////////////////////////////////////////////////////////////////////////////
+procedure TFlexArray<T>.ValidateTransposeDimensions(const NewDims: array of Integer);
+var
+  i: Integer;
+  DimUsed: array of Boolean;
+begin
+  // 整合性チェック
+  if System.Length(NewDims) <> Self.DimensionCount then
+    raise Exception.Create('指定された軸の数が配列の次元数と一致しません。');
+
+  // すべての次元が使用されているかチェック
+  SetLength(DimUsed, DimensionCount);
+  for i := 0 to system.High(DimUsed) do
+    DimUsed[i] := False;
+
+  for i := 0 to system.High(NewDims) do
+  begin
+    if (NewDims[i] < 1) or (NewDims[i] > DimensionCount) then
+      raise Exception.CreateFmt('次元指定 %d が範囲外です。', [NewDims[i]]);
+    DimUsed[NewDims[i] - 1] := True;
+  end;
+
+  for i := 0 to system.High(DimUsed) do
+    if not DimUsed[i] then
+      raise Exception.CreateFmt('次元 %d が指定されていません。', [i + 1]);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1621,9 +1698,10 @@ var
   FlexIndexes, MappedIndexes: TFlexArray<Integer>;
   IsAnotherArea: TFlexArray<Boolean>;
 begin
+  // 論理次元のBaseIndexを取得
+  TargetDimBaseIdx := Self.FDims.Items[Dim].Low;
   // 1-based to 0-based
   DimIdx := Dim - 1;
-  TargetDimBaseIdx := Self.FDims[DimIdx].Low;
 
   // NewRangesの設定
   NewRanges := Self.GetRanges;
