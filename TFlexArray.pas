@@ -72,7 +72,6 @@ type
     function GetElement(Index: Integer): T; inline;
     procedure SetElement(Index: Integer; const Value: T); inline;
     function GetDimensionCount: Integer; inline;
-    function GetIsLogicalTransposed: Boolean;
     procedure ValidateTransposeDimensions(const NewDims: array of Integer);
     function GetRanges: TFlexRanges;
     function ValueToStr(const V: T): string;
@@ -155,7 +154,7 @@ type
     function Transpose(): TFlexArray<T>; overload; // 2D
     procedure LogicalTranspose(const NewDims: array of Integer);
     procedure ResetTranspose;
-    property IsLogicalTransposed: Boolean read GetIsLogicalTransposed;
+    function IsLogicalTransposed: Boolean;
 
     function Concat(const Another: TFlexArray<T>; TargetDim: Integer): TFlexArray<T>;  // nD
     function HStack(const Another: TFlexArray<T>): TFlexArray<T>;  // 2D
@@ -718,8 +717,28 @@ end;
 // [戻値] 1次元配列
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.ToVector(): TArray<T>;
+var
+  i: Integer;
+  Coords: TCoords;
 begin
-  Result := Copy(FData);
+  if not IsLogicalTransposed then
+  begin
+    // 論理転置されていない場合は直接コピー
+    Result := Copy(FData);
+  end
+  else
+  begin
+    // 論理転置されている場合は正しい順序で抽出
+    SetLength(Result, FTotalSize);
+    SetLength(Coords, DimensionCount);
+    InitializeCoords(Coords);
+    
+    for i := 0 to FTotalSize - 1 do
+    begin
+      Result[i] := Self.ItemAt[Coords];
+      IncCoords(Coords);
+    end;
+  end;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1248,28 +1267,28 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.TransposeCore(const NewDims: array of Integer): TFlexArray<T>;
 var
-  i, d: Integer;
-  NewRanges: TFlexRanges;
-  ResultCoords, SelfCoords: TCoords;
+  i: Integer;
+  SelfCoords: TCoords;
+  bak: TFlexDimensions;
 begin
-  // NewRanges の計算
-  SetLength(NewRanges, DimensionCount);
-  for i := 0 to system.High(NewRanges) do
-    NewRanges[i] := [Self.Low(NewDims[i]), Self.High(NewDims[i])];
+  bak := Copy(FDims);
+  try
+    if IsLogicalTransposed then ResetTranspose;
 
-  Result := TFlexArray<T>.CreateFromRange(NewRanges);
+    // 論理転置を適用
+    LogicalTranspose(NewDims);
+    // 論理転置状態を利用し、新しい配列を作成
+    Result := TFlexArray<T>.CreateFromRange(GetRanges);
 
-  SetLength(SelfCoords, DimensionCount);
-  Result.InitializeCoords(ResultCoords);
-  for i := 0 to Result.FTotalSize - 1 do
-  begin
-    for d := 0 to system.High(SelfCoords) do
+    // 論理転置状態を利用し、1対1でコピー
+    Result.InitializeCoords(SelfCoords);
+    for i := 0 to Result.FTotalSize - 1 do
     begin
-      // 次元を入れ替え（注意：1-basedインデックスを0-basedインデックスに変換）
-      SelfCoords[NewDims[d] - 1] := ResultCoords[d];
+      Result.Elements[i] := Self.ItemAt[SelfCoords];
+      Self.IncCoords(SelfCoords);
     end;
-    Result.Elements[i] := Self.Elements[Self.GetOffset(SelfCoords)];
-    Result.IncCoords(ResultCoords);
+  finally
+    FDims := Copy(bak);
   end;
 end;
 
@@ -1285,6 +1304,8 @@ var
 begin
   ValidateTransposeDimensions(NewDims);
 
+  if IsLogicalTransposed then ResetTranspose;
+
   // RealIndexを再設定（論理次元i → 物理次元NewDims[i]）
   for i := 0 to DimensionCount - 1 do
     FDims[i].RealIndex := NewDims[i] - 1;  // 1-based→0-based
@@ -1295,7 +1316,7 @@ end;
 // [引数] なし
 // [戻値] 論理転置されている場合はTrue
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.GetIsLogicalTransposed: Boolean;
+function TFlexArray<T>.IsLogicalTransposed: Boolean;
 var
   i: Integer;
 begin
@@ -1657,7 +1678,6 @@ end;
 function TFlexArray<T>.SliceDimIndexes(Dim: Integer; const Indexes: TArray<Integer>; BaseIndex: Integer): TFlexArray<T>;
 var
   NewRanges: TFlexRanges;
-  d: Integer;
 begin
   Result := SliceDimIndexesCore(Dim, Indexes);
 
@@ -1751,9 +1771,9 @@ begin
     ResultCoords[DimIdx] := MappedIndexes[bak];
 
     if IsAnotherArea[bak] then
-      Result.Elements[i] := Another.Elements[Another.GetOffset(ResultCoords)]
+      Result.Elements[i] := Another.ItemAt[ResultCoords]
     else
-      Result.Elements[i] := Self.Elements[Self.GetOffset(ResultCoords)];
+      Result.Elements[i] := Self.ItemAt[ResultCoords];
 
     ResultCoords[DimIdx] := bak;
     Result.IncCoords(ResultCoords);
