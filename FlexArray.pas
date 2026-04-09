@@ -1986,7 +1986,8 @@ function TFlexArray<T>.IndexOfCoords(const Value: T): TCoords;
 var
   Index: Integer;
 begin
-  Index := Self.IndexOfElements(Value);
+  Index := TArray.IndexOf<T>(Self.FData, Value);
+  // Index := Self.IndexOfElements(Value);
 
   if Index >= 0 then
     Result := Self.GetCoords(Index);
