@@ -74,6 +74,7 @@ type
     function GetDimensionCount: Integer; inline;
     procedure ValidateTransposeDimensions(const NewDims: array of Integer);
     function GetRanges: TFlexRanges;
+    function LogicalIndexToRealIndex(Index: Integer): Integer;
     function ValueToStr(const V: T): string;
     procedure InitializeDimensions(const Ranges: TFlexRanges);
     procedure CheckDimension(ExpectedDim: Integer);
@@ -233,7 +234,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexDimensionsHelper.GetDimension(Index: Integer): TFlexDimension;
 begin
-  Result := Self[Self[Index - 1].RealIndex];  // 1ベース→0ベース変換
+  Result := Self[Self[Index - 1].RealIndex];  // 1ベース→0ベース変換 & 論理転置
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -243,7 +244,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 procedure TFlexDimensionsHelper.SetDimension(Index: Integer; const Value: TFlexDimension);
 begin
-  Self[Self[Index - 1].RealIndex] := Value;  // 1ベース→0ベース変換
+  Self[Self[Index - 1].RealIndex] := Value;  // 1ベース→0ベース変換 & 論理転置
 end;
 
 { TFlexArrayEnumerator<T> }
@@ -608,11 +609,11 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.GetValue(const Coords: array of Integer): T;
 begin
-  Result := Self.Elements[GetOffset(Coords)];
+  Result := FData[GetOffset(Coords)];
 end;
 function TFlexArray<T>.GetValue(const Coords: TCoords): T;
 begin
-  Result := Self.Elements[GetOffset(Coords)];
+  Result := FData[GetOffset(Coords)];
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -623,11 +624,11 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 procedure TFlexArray<T>.SetValue(const Coords: array of Integer; const Value: T);
 begin
-  Self.Elements[GetOffset(Coords)] := Value;
+  FData[GetOffset(Coords)] := Value;
 end;
 procedure TFlexArray<T>.SetValue(const Coords: TCoords; const Value: T);
 begin
-  Self.Elements[GetOffset(Coords)] := Value;
+  FData[GetOffset(Coords)] := Value;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -637,17 +638,46 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.GetElement(Index: Integer): T;
 begin
-  Result := FData[Index];
+  if IsLogicalTransposed then
+    Result := FData[LogicalIndexToRealIndex(Index)]
+  else
+    Result := FData[Index];
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
-// [概要] 線形インデックスに要素を設定
-// [引数] 0-based線形インデックス, 設定する要素
+// [概要] 配列の要素を設定（1次元インデックス）
+// [引数] インデックス, 値
 // [戻値] なし
 //////////////////////////////////////////////////////////////////////////////////////
 procedure TFlexArray<T>.SetElement(Index: Integer; const Value: T);
 begin
-  FData[Index] := Value;
+  if IsLogicalTransposed then
+    FData[LogicalIndexToRealIndex(Index)] := Value
+  else
+    FData[Index] := Value;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 論理インデックスを物理インデックスに変換
+// [引数] 論理インデックス
+// [戻値] 物理インデックス
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.LogicalIndexToRealIndex(Index: Integer): Integer;
+var
+  Coords: TCoords;
+  bak: TFlexDimensions;
+begin
+  // 論理的な座標を取得
+  Coords := GetCoords(Index);
+
+  // 論理座標を、転置なしの状態（物理メモリ配置）のインデックスに変換
+  bak := Copy(FDims);
+  try
+    ResetTranspose;
+    Result := GetOffset(Coords);
+  finally
+    FDims := bak;
+  end;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -721,23 +751,22 @@ var
   i: Integer;
   Coords: TCoords;
 begin
-  if not IsLogicalTransposed then
-  begin
-    // 論理転置されていない場合は直接コピー
-    Result := Copy(FData);
-  end
-  else
+  if IsLogicalTransposed then
   begin
     // 論理転置されている場合は正しい順序で抽出
     SetLength(Result, FTotalSize);
     SetLength(Coords, DimensionCount);
     InitializeCoords(Coords);
-    
+
     for i := 0 to FTotalSize - 1 do
     begin
       Result[i] := Self.ItemAt[Coords];
       IncCoords(Coords);
     end;
+  end
+  else
+  begin
+    Result := Copy(FData);
   end;
 end;
 
@@ -908,7 +937,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.GetEnumerator: TFlexArrayEnumerator<T>;
 begin
-  Result := TFlexArrayEnumerator<T>.Create(FData, FTotalSize);
+  Result := TFlexArrayEnumerator<T>.Create(Self.ToVector, FTotalSize);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1284,11 +1313,11 @@ begin
     Result.InitializeCoords(SelfCoords);
     for i := 0 to Result.FTotalSize - 1 do
     begin
-      Result.Elements[i] := Self.ItemAt[SelfCoords];
+      Result.FData[i] := Self.ItemAt[SelfCoords];
       Self.IncCoords(SelfCoords);
     end;
   finally
-    FDims := Copy(bak);
+    FDims := bak;
   end;
 end;
 
@@ -1771,9 +1800,9 @@ begin
     ResultCoords[DimIdx] := MappedIndexes[bak];
 
     if IsAnotherArea[bak] then
-      Result.Elements[i] := Another.ItemAt[ResultCoords]
+      Result.FData[i] := Another.ItemAt[ResultCoords]
     else
-      Result.Elements[i] := Self.ItemAt[ResultCoords];
+      Result.FData[i] := Self.ItemAt[ResultCoords];
 
     ResultCoords[DimIdx] := bak;
     Result.IncCoords(ResultCoords);
