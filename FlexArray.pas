@@ -5,7 +5,8 @@ interface
 uses
   System.SysUtils, System.Generics.Collections, System.Math,
   System.Rtti,    // TValue のため
-  System.TypInfo; // tkString などの型判定（TValue.Kind）のため
+  System.TypInfo, // tkString などの型判定（TValue.Kind）のため
+  System.Generics.Defaults; // IEqualityComparerのため
 
 type
   TFlexRange = TArray<Integer>;  // [Low, High] のペア
@@ -74,6 +75,7 @@ type
     procedure ValidateTransposeDimensions(const NewDims: array of Integer);
     function GetRanges: TFlexRanges;
     function LogicalIndexToRealIndex(Index: Integer): Integer;
+    function RealIndexToLogicalIndex(Index: Integer): Integer;
     function ValueToStr(const V: T): string;
     procedure InitializeDimensions(const Ranges: TFlexRanges);
     procedure CheckDimension(ExpectedDim: Integer);
@@ -183,6 +185,14 @@ type
     function Mapped<TResult>(const AFunc: TMappedFunc<T, TResult>): TFlexArray<TResult>; overload;
 
     function Filter(const AFunc: TFilterFunc<T>): TArray<T>; overload;
+
+    // in 演算子のオーバーロード
+    class operator In(const Value: T; const FlexArray: TFlexArray<T>): Boolean;
+
+    // Contains メソッド - 指定値が含まれるかチェック（関数版）
+    function Contains(const Value: T): Boolean;
+    function IndexOfElements(const Value: T): Integer;
+    function IndexOfCoords(const Value: T): TCoords;
   end;
 
 implementation
@@ -681,6 +691,29 @@ begin
   finally
     FDims := bak;
   end;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 物理インデックスを論理インデックスに変換
+// [引数] 物理インデックス
+// [戻値] 論理インデックス
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.RealIndexToLogicalIndex(Index: Integer): Integer;
+var
+  Coords: TCoords;
+  bak: TFlexDimensions;
+begin
+  // 物理的な座標を取得（転置なしの状態）
+  bak := Copy(FDims);
+  try
+    ResetTranspose;
+    Coords := GetCoords(Index);
+  finally
+    FDims := bak;
+  end;
+  
+  // 物理座標を、論理転置状態のインデックスに変換
+  Result := GetOffset(Coords);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1898,6 +1931,65 @@ end;
 function SequentialNumber(const Value: Integer; const Coords: TCoords): Integer;
 begin
   Result := Coords[0];
+end;
+
+{ TFlexArray<T> }
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] in 演算子のオーバーロード - 指定値が配列に含まれるかチェック
+// [引数] Value: 検索する値, FlexArray: 検索対象の配列
+// [戻値] 値が含まれる場合は True、含まれない場合は False
+// [使用例] if 20 in arr then ShowMessage('含まれています');
+//////////////////////////////////////////////////////////////////////////////////////
+class operator TFlexArray<T>.In(const Value: T; const FlexArray: TFlexArray<T>): Boolean;
+begin
+  Result := FlexArray.Contains(Value);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 指定値が含まれるかチェック
+// [引数] Value: 検索する値
+// [戻値] 値が含まれる場合は True、含まれない場合は False
+// [使用例] if arr.Contains(20) then ShowMessage('含まれています');
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.Contains(const Value: T): Boolean;
+begin
+  Result := TArray.Contains<T>(Self.FData, Value);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 指定値のインデックスを返す
+// [引数] Value: 検索する値
+// [戻値] 見つかった場合は0-basedインデックス、見つからない場合は-1
+// [使用例] idx := arr.IndexOf(20);
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.IndexOfElements(const Value: T): Integer;
+var
+  Index: Integer;
+begin
+  Index := TArray.IndexOf<T>(Self.FData, Value);
+
+  if Index = -1 then Exit(-1);
+
+  if IsLogicalTransposed then
+    Result := RealIndexToLogicalIndex(Index)
+  else
+    Result := Index;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 指定値の座標を返す
+// [引数] Value: 検索する値
+// [戻値] 見つかった場合は座標配列、見つからない場合は空の配列
+// [使用例] coords := arr.IndexOfCoords(20);
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.IndexOfCoords(const Value: T): TCoords;
+var
+  Index: Integer;
+begin
+  Index := Self.IndexOfElements(Value);
+
+  if Index >= 0 then
+    Result := Self.GetCoords(Index);
 end;
 
 end.
