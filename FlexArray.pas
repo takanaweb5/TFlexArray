@@ -1,4 +1,4 @@
-﻿unit TFlexArray;
+﻿unit FlexArray;
 
 interface
 
