@@ -9,14 +9,14 @@ type
   // 数値配列のエイリアス（TFlexプレフィックスで競合を回避）
   TFlexIntArray = TFlexArray<Integer>;
   TFlexDblArray = TFlexArray<Double>;
-  
+
   // 数値演算用コールバック関数
   TReduceFunc = function(
     const Acc: Double;
     const Value: Double;
     const Coords: TCoords
   ): Double;
-  
+
   TMapFunc = function(const Value: Double; const Coords: TCoords): Double;
 
   // 数値演算特化レコード（Integer版）
@@ -29,16 +29,34 @@ type
   TNumpas = record
   private
     FData: TFlexDblArray;
-    
+
+    // GetValue/SetValue メソッド - TFlexArrayと完全統一
+    function GetValue(const Coords: array of Integer): Double; overload;
+    procedure SetValue(const Coords: array of Integer; const Value: Double); overload;
+    function GetValue(const Coords: TCoords): Double; overload;
+    procedure SetValue(const Coords: TCoords; const Value: Double); overload;
+
+    // Elements プロパティ用のアクセサメソッド
+    function GetElement(Index: Integer): Double;
+    procedure SetElement(Index: Integer; const Value: Double);
+    function GetDimensionCount: Integer;
+
+    // Low/High/Len メソッド - TFlexArrayと完全統一
+    function Low: Integer; overload;
+    function High: Integer; overload;
+    function Low(Dim: Integer): Integer; overload;
+    function High(Dim: Integer): Integer; overload;
+    function Len(Dim: Integer): Integer;
+
     function BaseIndex: Integer;
     procedure ValidateBaseIndexConsistency;
-    
+
     // 座標初期化用のヘルパー関数
     procedure InitializeCoords(var Coords: TCoords);
-    
+
     // 論理転置用のカスタムIncCoords
     procedure LogicalIncCoords(var Coords: TCoords; const Order: TArray<Integer>);
-    
+
   public
     // コンストラクタ
     constructor Create(const AData: TFlexDblArray); overload;
@@ -48,9 +66,14 @@ type
     class operator Implicit(const AData: TFlexDblArray): TNumpas;
 
     function Reduce(const Dims: array of Integer; Func: TReduceFunc; Init: Double): TNumpas; overload;
-    
+
     function Reduce(const Func: TReduceFunc; Init: Double): Double; overload;
 
+    property ItemAt[const Coords: TCoords]: Double read GetValue write SetValue;
+    property Items[const Coords: array of Integer]: Double read GetValue write SetValue; default;
+    property Elements[Index: Integer]: Double read GetElement write SetElement;
+    property DimensionCount: Integer read GetDimensionCount;
+    
     // TFlexArrayへの直接アクセス
     property Data: TFlexDblArray read FData;
   end;
@@ -58,6 +81,145 @@ type
 implementation
 
 { TNumpas }
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] GetValueメソッド（array of Integer版）- TFlexArrayと完全統一
+// [引数] Coords: 座標配列
+// [戻値] 指定座標の値
+// [使用例] Value := Numpas.GetValue([1, 2]);
+//////////////////////////////////////////////////////////////////////////////////////
+function TNumpas.GetValue(const Coords: array of Integer): Double;
+var
+  CoordsArray: TCoords;
+  i: Integer;
+begin
+  SetLength(CoordsArray, Length(Coords));
+  for i := 0 to System.High(Coords) do
+    CoordsArray[i] := Coords[i];
+  Result := FData.ItemAt[CoordsArray];
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] SetValueメソッド（array of Integer版）- TFlexArrayと完全統一
+// [引数] Coords: 座標配列, Value: 設定する値
+// [使用例] Numpas.SetValue([1, 2], 3.14);
+//////////////////////////////////////////////////////////////////////////////////////
+procedure TNumpas.SetValue(const Coords: array of Integer; const Value: Double);
+var
+  CoordsArray: TCoords;
+  i: Integer;
+begin
+  SetLength(CoordsArray, Length(Coords));
+  for i := 0 to System.High(Coords) do
+    CoordsArray[i] := Coords[i];
+
+  FData.ItemAt[CoordsArray] := Value;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] GetValueメソッド（TCoords版）- TFlexArrayと完全統一
+// [引数] Coords: TCoords型座標配列
+// [戻値] 指定座標の値
+// [使用例] Value := Numpas.GetValue([1, 2]);
+//////////////////////////////////////////////////////////////////////////////////////
+function TNumpas.GetValue(const Coords: TCoords): Double;
+begin
+  Result := FData.ItemAt[Coords];
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] SetValueメソッド（TCoords版）- TFlexArrayと完全統一
+// [引数] Coords: TCoords型座標配列, Value: 設定する値
+// [使用例] Numpas.SetValue([1, 2], 3.14);
+//////////////////////////////////////////////////////////////////////////////////////
+procedure TNumpas.SetValue(const Coords: TCoords; const Value: Double);
+begin
+  FData.ItemAt[Coords] := Value;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] Elementsプロパティのゲッター（ラッパー）
+// [引数] Index: 線形インデックス
+// [戻値] 指定インデックスの値
+// [使用例] Value := Numpas.Elements[0];
+//////////////////////////////////////////////////////////////////////////////////////
+function TNumpas.GetElement(Index: Integer): Double;
+begin
+  Result := FData.Elements[Index];
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] Elementsプロパティのセッター（ラッパー）
+// [引数] Index: 線形インデックス, Value: 設定する値
+// [使用例] Numpas.Elements[0] := 1.0;
+//////////////////////////////////////////////////////////////////////////////////////
+procedure TNumpas.SetElement(Index: Integer; const Value: Double);
+begin
+  FData.Elements[Index] := Value;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] DimensionCountプロパティのゲッター（ラッパー）
+// [戻値] 次元数
+// [使用例] DimCount := Numpas.DimensionCount;
+//////////////////////////////////////////////////////////////////////////////////////
+function TNumpas.GetDimensionCount: Integer;
+begin
+  Result := FData.DimensionCount;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] Lowメソッド（1D版）- TFlexArrayと完全統一
+// [戻値] 1次元目のLow値
+// [使用例] LowVal := Numpas.Low;
+//////////////////////////////////////////////////////////////////////////////////////
+function TNumpas.Low: Integer;
+begin
+  Result := FData.Low;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] Highメソッド（1D版）- TFlexArrayと完全統一
+// [戻値] 1次元目のHigh値
+// [使用例] HighVal := Numpas.High;
+//////////////////////////////////////////////////////////////////////////////////////
+function TNumpas.High: Integer;
+begin
+  Result := FData.High;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] Lowメソッド（nD版）- TFlexArrayと完全統一
+// [引数] Dim: 次元番号
+// [戻値] 指定次元のLow値
+// [使用例] LowVal := Numpas.Low(2);
+//////////////////////////////////////////////////////////////////////////////////////
+function TNumpas.Low(Dim: Integer): Integer;
+begin
+  Result := FData.Low(Dim);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] Highメソッド（nD版）- TFlexArrayと完全統一
+// [引数] Dim: 次元番号
+// [戻値] 指定次元のHigh値
+// [使用例] HighVal := Numpas.High(2);
+//////////////////////////////////////////////////////////////////////////////////////
+function TNumpas.High(Dim: Integer): Integer;
+begin
+  Result := FData.High(Dim);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] Lenメソッド - TFlexArrayと完全統一
+// [引数] Dim: 次元番号
+// [戻値] 指定次元の要素数
+// [使用例] Length := Numpas.Len(2);
+//////////////////////////////////////////////////////////////////////////////////////
+function TNumpas.Len(Dim: Integer): Integer;
+begin
+  Result := FData.Len(Dim);
+end;
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] BaseIndex（1次元目のLow値）を取得する
@@ -158,7 +320,7 @@ begin
   SetLength(DimUsed, FData.DimensionCount);
   
   // 境界チェックとカウント
-  for i := 0 to High(Dims) do
+  for i := 0 to System.High(Dims) do
   begin
     if (Dims[i] < 1) or (Dims[i] > FData.DimensionCount) then
       raise Exception.CreateFmt('Reduce: 次元%dは範囲外です', [Dims[i]]);
@@ -198,7 +360,7 @@ begin
   
   // 4. インナー歩数の計算（削減次元の全要素数）
   InnerStepCount := 1;
-  for i := 0 to High(ReduceDims) do
+  for i := 0 to System.High(ReduceDims) do
   begin
     DimIdx := ReduceDims[i] - 1;
     InnerStepCount := InnerStepCount * FData.Len(DimIdx);
@@ -206,7 +368,7 @@ begin
   
   // 4. 結果配列の準備
   SetLength(NewRanges, Length(KeepDims));
-  for i := 0 to High(KeepDims) do
+  for i := 0 to System.High(KeepDims) do
   begin
     DimIdx := KeepDims[i] - 1;
     NewRanges[i] := [FData.Low(DimIdx), FData.High(DimIdx)];
@@ -232,7 +394,7 @@ begin
     begin
       // 配列結果（座標から線形インデックスを計算）
       SetLength(ResultCoords, Length(KeepDims));
-      for d := 0 to High(KeepDims) do
+      for d := 0 to System.High(KeepDims) do
         ResultCoords[d] := Coords[KeepDims[d] - 1];
 
       ResultArray.ItemAt[ResultCoords] := Acc;
@@ -278,7 +440,7 @@ var
   i, DimIdx: Integer;
 begin
   // 論理転置順序で繰り上げ処理
-  for i := High(Order) downto 0 do
+  for i := System.High(Order) downto 0 do
   begin
     DimIdx := Order[i] - 1;  // 1-based→0-based
     Inc(Coords[DimIdx]);
