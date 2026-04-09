@@ -18,6 +18,10 @@ type
   TFlexRanges = TArray<TFlexRange>;  // [[Low1, High1], [Low2, High2], ...]
 
   TCoords = array of Integer;  // 座標配列 [x, y, z, ...]
+  TCoordsHelper = record helper for TCoords
+  public
+    class function FromArray(const Coords: array of Integer): TCoords; static;
+  end;
 
   TFlexDimension = record
     Low, High, Stride: Integer;
@@ -46,18 +50,19 @@ type
     function MoveNext: Boolean;
   end;
 
-  // 非破壊的Map用コールバック
-  TMappedFunc<T, TResult> = reference to function(const Value: T; const Coords: TCoords): TResult;
-  // 破壊的Map用コールバック
-  TMapFunc<T> = reference to function(const Value: T; const Coords: TCoords): T;
-  // Filter用コールバック
-  TFilterFunc<T> = reference to function(const Value: T; const Coords: TCoords): Boolean;
 
   // Map用コールバック関数サンプル(連番作成)
   function SequentialNumber(const Value: Integer; const Coords: TCoords): Integer;
 
 type
   TFlexArray<T> = record
+  type
+    // 非破壊的Map用コールバック
+    TMappedFunc<T, TResult> = reference to function(const Value: T; const Coords: TCoords): TResult;
+    // 破壊的Map用コールバック
+    TMapFunc<T> = reference to function(const Value: T; const Coords: TCoords): T;
+    // Filter用コールバック
+    TFilterFunc<T> = reference to function(const Value: T; const Coords: TCoords): Boolean;
   private
     FData: TArray<T>;
     FDims: TFlexDimensions;  // 次元情報
@@ -226,6 +231,22 @@ end;
 function TFlexRangeHelper.Len: Integer;
 begin
   Result := High - Low + 1;
+end;
+
+{ TCoordsHelper }
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] array of Integer から TCoords への変換
+// [引数] Coords: Integer配列
+// [戻値] TCoords型の座標配列
+// [使用例] Coords := TCoords.FromArray([1, 2, 3]);
+//////////////////////////////////////////////////////////////////////////////////////
+class function TCoordsHelper.FromArray(const Coords: array of Integer): TCoords;
+var
+  i: Integer;
+begin
+  SetLength(Result, Length(Coords));
+  for i := 0 to System.High(Coords) do
+    Result[i] := Coords[i];
 end;
 
 { TFlexDimension }
