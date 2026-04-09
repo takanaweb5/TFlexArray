@@ -64,8 +64,6 @@ type
     FIsView: Boolean;
     FIsLogicalTransposed: Boolean;
 
-    function GetCoords(LinearIndex: Integer): TCoords;
-    function GetOffset(const Coords: array of Integer): Integer;
     function GetValue(const Coords: array of Integer): T; overload;
     procedure SetValue(const Coords: array of Integer; const Value: T); overload;
     function GetValue(const Coords: TCoords): T;  overload;
@@ -102,6 +100,9 @@ type
     function Low(Dim: Integer): Integer; overload; // nD
     function High(Dim: Integer): Integer; overload; // nD
     function Len(Dim: Integer): Integer;
+
+    function GetCoords(LinearIndex: Integer): TCoords;
+    function GetOffset(const Coords: array of Integer): Integer;
 
     property ItemAt[const Coords: TCoords]: T read GetValue write SetValue;
     property Items[const Coords: array of Integer]: T read GetValue write SetValue; default;
