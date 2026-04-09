@@ -62,6 +62,7 @@ type
     FDims: TFlexDimensions;  // 次元情報
     FTotalSize: Integer;
     FIsView: Boolean;
+    FIsLogicalTransposed: Boolean;
 
     function GetCoords(LinearIndex: Integer): TCoords;
     function GetOffset(const Coords: array of Integer): Integer;
@@ -155,7 +156,7 @@ type
     function Transpose(): TFlexArray<T>; overload; // 2D
     procedure LogicalTranspose(const NewDims: array of Integer);
     procedure ResetTranspose;
-    function IsLogicalTransposed: Boolean;
+    property IsLogicalTransposed: Boolean read FIsLogicalTransposed;
 
     function Concat(const Another: TFlexArray<T>; TargetDim: Integer): TFlexArray<T>;  // nD
     function HStack(const Another: TFlexArray<T>): TFlexArray<T>;  // 2D
@@ -321,6 +322,7 @@ begin
   end;
 
   FTotalSize := CurrentStride;
+  FIsLogicalTransposed := False;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1335,24 +1337,16 @@ begin
 
   if IsLogicalTransposed then ResetTranspose;
 
+  FIsLogicalTransposed := False;
+
   // RealIndexを再設定（論理次元i → 物理次元NewDims[i]）
   for i := 0 to DimensionCount - 1 do
+  begin
     FDims[i].RealIndex := NewDims[i] - 1;  // 1-based→0-based
-end;
 
-//////////////////////////////////////////////////////////////////////////////////////
-// [概要] 論理転置されているか判定する
-// [引数] なし
-// [戻値] 論理転置されている場合はTrue
-//////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.IsLogicalTransposed: Boolean;
-var
-  i: Integer;
-begin
-  for i := 0 to DimensionCount - 1 do
-    if FDims[i].RealIndex <> i then
-      Exit(True);
-  Result := False;
+    if NewDims[i] - 1 <> i then
+      FIsLogicalTransposed := True;
+  end;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1365,12 +1359,11 @@ procedure TFlexArray<T>.ResetTranspose;
 var
   i: Integer;
 begin
-  if not IsLogicalTransposed then
-    raise Exception.Create('ResetTranspose: 論理転置されていません。');
-    
   // RealIndexを自然順序に直接設定
   for i := 0 to DimensionCount - 1 do
     FDims[i].RealIndex := i;
+
+  FIsLogicalTransposed := False;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
