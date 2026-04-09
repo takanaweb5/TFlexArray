@@ -3,7 +3,7 @@
 interface
 
 uses
-  System.SysUtils, TFlexArray;
+  System.SysUtils, FlexArray;
 
 type
   // 数値配列のエイリアス（TFlexプレフィックスで競合を回避）
