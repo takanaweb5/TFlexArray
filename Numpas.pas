@@ -7,10 +7,12 @@ uses
 
 type
 //  // 数値配列のエイリアス（TFlexプレフィックスで競合を回避）
-//  TFlexIntArray = TFlexArray<Integer>;
-//  TFlexDblArray = TFlexArray<Double>;
+  TFlexIntArray = TFlexArray<Integer>;
+  TFlexDblArray = TFlexArray<Double>;
+  PFlexIntArray = ^TFlexIntArray;
+  PFlexDblArray = ^TFlexDblArray;
 
-    TReduceFunc<T> = reference to function(const Acc, Element: T): T;
+  TReduceFunc<T> = reference to function(const Acc, Element: T): T;
 
   // TNumpas インターフェース
   INumpas<T> = interface
@@ -38,10 +40,9 @@ type
     property TotalSize: Integer read GetTotalSize;
   end;
 
-  TNumpas<T> = class(TInterfacedObject, INumpas<T>)
+  TNumpas<T> = class abstract(TInterfacedObject, INumpas<T>)
   private
     FData: TFlexArray<T>;
-
     // GetValue/SetValue メソッド - TFlexArrayと完全統一
     function GetValue(const Coords: array of Integer): T; overload;
     procedure SetValue(const Coords: array of Integer; const Value: T); overload;
@@ -49,20 +50,10 @@ type
     procedure SetValue(const Coords: TCoords; const Value: T); overload;
 
     // Elements プロパティ用のアクセサメソッド
-    function GetElement(Index: Integer): T;
-    procedure SetElement(Index: Integer; const Value: T);
-    function GetDimensionCount: Integer;
-    function GetTotalSize: Integer;
-
-    // Low/High/Len メソッド - TFlexArrayと完全統一
-    function Low: Integer; overload;
-    function High: Integer; overload;
-    function Low(Dim: Integer): Integer; overload;
-    function High(Dim: Integer): Integer; overload;
-    function Len(Dim: Integer): Integer;
-
-    function BaseIndex: Integer;
-    procedure ValidateBaseIndexConsistency;
+    function GetElement(Index: Integer): T; inline;
+    procedure SetElement(Index: Integer; const Value: T); inline;
+    function GetDimensionCount: Integer; inline;
+    function GetTotalSize: Integer; inline;
 
   public
     // コンストラクタ
@@ -70,6 +61,15 @@ type
     constructor Create(const Shapes: array of Integer; BaseIndex: Integer); overload;
     destructor Destroy; override;
 
+    // Low/High/Len メソッド - TFlexArrayと完全統一
+    function Low: Integer; overload; inline;
+    function High: Integer; overload; inline;
+    function Low(Dim: Integer): Integer; overload; inline;
+    function High(Dim: Integer): Integer; overload; inline;
+    function Len(Dim: Integer): Integer; inline;
+
+    function BaseIndex: Integer; inline;
+    procedure ValidateBaseIndexConsistency;
     // // 演算子オーバーロードによる型変換
     // class operator Implicit(const AData: TFlexDblArray): TNumpas;
 
@@ -81,38 +81,58 @@ type
     property Elements[Index: Integer]: T read GetElement write SetElement;
     property DimensionCount: Integer read GetDimensionCount;
     property TotalSize: Integer read GetTotalSize;
-
-    // TFlexArrayへの直接アクセス
-    property Data: TFlexArray<T> read FData;
   end;
 
   // 数値演算特化クラス（Double）
+  INumpasInt = interface(INumpas<Integer>)
+    function Data: PFlexIntArray;
+  end;
+
   INumpasDbl = interface(INumpas<Double>)
-  end;
-  TNumpasDbl = class(TNumpas<Double>, INumpasDbl)
+    function Data: PFlexDblArray;
   end;
 
+// 1. インターフェース「INumpasInt」を明示的に適用
+  TNumpasInt = class(TNumpas<Integer>, INumpasInt, INumpas<Integer>)
+  public
+    // 2. クラス用・インターフェース用共通の窓口
+    function Data: PFlexIntArray;
+  end;
 
+  // 1. インターフェース「INumpasDbl」を明示的に適用
+  TNumpasDbl = class(TNumpas<Double>, INumpasDbl, INumpas<Double>)
+  public
+    function Data: PFlexDblArray;
+  end;
 
 implementation
 
 { TNumpas }
 
-////////////////////////////////////////////////////////////////////////////////////////
-//// [概要] array of Integer を TCoords に変換するヘルパー関数
-//// [引数] Coords: Integer配列
-//// [戻値] TCoords型の座標配列
-//// [使用例] Coords := ArrayToCoords([1, 2, 3]);
-////////////////////////////////////////////////////////////////////////////////////////
-//function TNumpas<T>.ArrayToCoords(const Coords: array of Integer): TCoords;
-//var
-//  i: Integer;
-//begin
-//  SetLength(Result, Length(Coords));
-//  for i := 0 to System.High(Coords) do
-//    Result[i] := Coords[i];
-//end;
 
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] Dataプロパティのゲッター（インターフェース実装）
+// [戻値] 内部TFlexArray<Integer>へのポインタ
+// [使用例] N.Data.Reshape([5,2], 0);
+// [備考] ポインタでアクセスしないと値のコピーが発生して変更が反映されない。
+//        FDataのアドレスを直接返すことで、元のデータへの直接アクセスを保証
+//////////////////////////////////////////////////////////////////////////////////////
+function TNumpasInt.Data: PFlexIntArray;
+begin
+  Result := PFlexIntArray(@FData);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] Dataプロパティのゲッター（インターフェース実装）
+// [戻値] 内部TFlexArray<Double>へのポインタ
+// [使用例] N.Data.Reshape([5,2], 0);
+// [備考] ポインタでアクセスしないと値のコピーが発生して変更が反映されない。
+//        FDataのアドレスを直接返すことで、元のデータへの直接アクセスを保証
+//////////////////////////////////////////////////////////////////////////////////////
+function TNumpasDbl.Data: PFlexDblArray;
+begin
+  Result := PFlexDblArray(@FData);
+end;
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] GetValueメソッド（array of Integer版）- TFlexArrayと完全統一
@@ -196,6 +216,7 @@ function TNumpas<T>.GetTotalSize: Integer;
 begin
   Result := Self.FData.TotalSize;
 end;
+
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] Lowメソッド（1D版）- TFlexArrayと完全統一
@@ -461,8 +482,6 @@ end;
 //end;
 
 
+{ TNumpasInt }
+
 end.
-
-
-{ TNumpasDbl }
-end;
