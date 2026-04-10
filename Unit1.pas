@@ -1543,11 +1543,17 @@ begin
   //     N[i, j] := i * 10 + j;  // 11, 12, 13, 21, 22, 23, 31, 32, 33
 
   // データを設定 - InitializeCoordsとIncCoordsを使用
-  N.Data.InitializeCoords(Coords);
-  for i := 1 to N.TotalSize do
+  // N.Data.InitializeCoords(Coords);
+  // for i := 1 to N.TotalSize do
+  // begin
+  //   N.ItemAt[Coords] := Coords[0] * 100 + Coords[1];
+  //   N.Data.IncCoords(Coords);
+  // end;
+
+  // データを設定 - CoordsIterator を使用
+  for Coords in N.Data.CoordsIterator do
   begin
-    N.ItemAt[Coords] := Coords[0] * 100 + Coords[1];
-    N.Data.IncCoords(Coords);
+    N.ItemAt[Coords] := Coords[0] * 1000 + Coords[1];
   end;
 
 

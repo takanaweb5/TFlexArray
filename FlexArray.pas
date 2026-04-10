@@ -9,6 +9,7 @@ uses
   System.Generics.Defaults; // IEqualityComparerのため
 
 type
+
   TFlexRange = TArray<Integer>;  // [Low, High] のペア
   TFlexRangeHelper = record helper for TFlexRange
     function Low:  Integer; inline;
@@ -57,6 +58,18 @@ type
 type
   TFlexArray<T> = record
   type
+    TCoordsIterator = class
+    private
+      FData: Pointer;
+      FCoords: TCoords;
+      function GetCurrent: TCoords;
+    public
+      constructor Create(const Parent: Pointer);
+      function MoveNext: Boolean;
+      property Current: TCoords read GetCurrent;
+      function GetEnumerator: TCoordsIterator;
+    end;
+
     // 非破壊的Map用コールバック
     TMappedFunc<T, TResult> = reference to function(const Value: T; const Coords: TCoords): TResult;
     // 破壊的Map用コールバック
@@ -198,6 +211,9 @@ type
     function Contains(const Value: T): Boolean;
     function IndexOfElements(const Value: T): Integer;
     function IndexOfCoords(const Value: T): TCoords;
+
+    // 座標イテレータ - for Coords in FlexArray.CoordsIterator do
+    function CoordsIterator: TCoordsIterator;
   end;
 
 implementation
@@ -312,6 +328,48 @@ function TFlexArrayEnumerator<T>.MoveNext: Boolean;
 begin
   Inc(FIndex);
   Result := FIndex < FTotalSize;
+end;
+
+
+{ TCoordsIterator }
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 座標列挙子を初期化
+// [引数] 親配列のポインタ
+// [戻値] なし
+//////////////////////////////////////////////////////////////////////////////////////
+constructor TFlexArray<T>.TCoordsIterator.Create(const Parent: Pointer);
+begin
+  inherited Create;
+  FData := Parent;
+  TFlexArray<T>(FData^).InitializeCoords(FCoords);
+end;
+
+/////////////////////////////////////////////////////////////////////////////////////
+// [概要] 現在の座標を取得
+// [戻値] 現在の座標（TCoordsのコピー）
+//////////////////////////////////////////////////////////////////////////////////////
+function  TFlexArray<T>.TCoordsIterator.GetCurrent: TCoords;
+begin
+  Result := Copy(FCoords);  // コピーを返す
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 次の座標に移動
+// [戻値] 次の座標が存在する場合はTrue、終了時はFalse
+//////////////////////////////////////////////////////////////////////////////////////
+function  TFlexArray<T>.TCoordsIterator.MoveNext: Boolean;
+begin
+  Result := not TFlexArray<T>(FData^).IncCoords(FCoords);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 自身を列挙子として返す（for..in ループ用）
+// [戻値] 自身のインスタンス
+// [使用例] for Coords in FlexArray.CoordsIterator do ...
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.TCoordsIterator.GetEnumerator: TFlexArray<T>.TCoordsIterator;
+begin
+  Result := Self;
 end;
 
 
@@ -995,6 +1053,17 @@ end;
 function TFlexArray<T>.GetEnumerator: TFlexArrayEnumerator<T>;
 begin
   Result := TFlexArrayEnumerator<T>.Create(Self.ToVector, FTotalSize);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 座標列挙子を取得
+// [引数] なし
+// [戻値] TCoordsIterator オブジェクト
+// [使用例] for Coords in FlexArray.CoordsIterator do ...
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.CoordsIterator: TFlexArray<T>.TCoordsIterator;
+begin
+  Result := TCoordsIterator.Create(@Self);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
