@@ -4,13 +4,15 @@ interface
 
 uses
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
-  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls, TFlexArray, DebugLog, System.DateUtils;
+  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls, FlexArray, Numpas, DebugLog, System.DateUtils;
 
 type
   TForm1 = class(TForm)
     Memo1: TMemo;
     Button1: TButton;
+    Button2: TButton;
     procedure Button1Click(Sender: TObject);
+    procedure Button2Click(Sender: TObject);
   private
     { Private 宣言 }
   public
@@ -162,6 +164,113 @@ begin
 //  end;
 //
 //  Log('Reshape chain test completed');
+end;
+
+// --- 論理転置テスト ---
+procedure Test_LogicalTranspose;
+var
+  A: TFlexArray<Integer>;
+  i, j: Integer;
+begin
+  Log('[Test: Logical Transpose]');
+  
+  // 2x3行列を作成
+  A := TFlexArray<Integer>.Create([2, 3], 1);
+  A[1,1] := 1; A[1,2] := 2; A[1,3] := 3;
+  A[2,1] := 4; A[2,2] := 5; A[2,3] := 6;
+
+  Log('Original 2x3:');
+  Log(A.ToString);
+  Log(Format('IsLogicalTransposed: %s', [A.IsLogicalTransposed.ToString]));
+  
+  // 論理転置 [2, 1] → 2次元と1次元を入れ替え
+  A.LogicalTranspose([2, 1]);
+  Log('After LogicalTranspose([2, 1]):');
+  Log(A.ToString);
+  Log(Format('IsLogicalTransposed: %s', [A.IsLogicalTransposed.ToString]));
+  
+  // アクセス確認
+  Log('Access check:');
+  Log(Format('A[1,1] = %d (should be 1)', [A[1,1]]));
+  Log(Format('A[1,2] = %d (should be 4)', [A[1,2]]));
+  Log(Format('A[2,1] = %d (should be 2)', [A[2,1]]));
+  Log(Format('A[2,2] = %d (should be 5)', [A[2,2]]));
+  Log(Format('A[3,1] = %d (should be 3)', [A[3,1]]));
+  Log(Format('A[3,2] = %d (should be 6)', [A[3,2]]));
+  
+  // ResetTransposeテスト
+  A.ResetTranspose;
+  Log('After ResetTranspose:');
+  Log(A.ToString);
+  Log(Format('IsLogicalTransposed: %s', [A.IsLogicalTransposed.ToString]));
+  
+  // Reshapeテスト（自動リセット）
+  A.LogicalTranspose([2, 1]);
+  Log('Before Reshape (transposed):');
+  Log(Format('IsLogicalTransposed: %s', [A.IsLogicalTransposed.ToString]));
+  
+  A.Reshape([3, 2], 1);
+  Log('After Reshape([3, 2], 1):');
+  Log(A.ToString);
+  Log(Format('IsLogicalTransposed: %s', [A.IsLogicalTransposed.ToString]));
+  
+  Log('Logical Transpose test completed');
+end;
+
+// --- Slice系テスト（論理転置＋Base/Lenばらばら） ---
+procedure Test_SliceWithLogicalTranspose;
+var
+  A: TFlexArray<Integer>;
+  Slice1, Slice2: TFlexArray<Integer>;
+  i, j: Integer;
+begin
+  Log('[Test: Slice with Logical Transpose (Random Base/Len)]');
+  
+  // BaseとLenがばらばらな3次元配列を作成
+  // 形状: [1990..1991, 5..7, 10..12] → 2x3x3 = 18要素
+  A := TFlexArray<Integer>.CreateFromRange([[1990, 1991], [5, 7], [10, 12]]);
+  
+  // データを設定
+  for i := 1990 to 1991 do
+    for j := 5 to 7 do
+      A[i, j, 10] := (i * 1000) + (j * 10) + 10;  // 一意な値
+  
+  Log('Original 3D array [1990..1991, 5..7, 10..12]:');
+  Log(A.ToString);
+  Log(Format('IsLogicalTransposed: %s', [A.IsLogicalTransposed.ToString]));
+  
+  // 論理転置 [3, 1, 2] → 次元順序を入れ替え
+  A.LogicalTranspose([3, 1, 2]);
+  Log('After LogicalTranspose([3, 1, 2]):');
+  Log(A.ToString);
+  Log(Format('IsLogicalTransposed: %s', [A.IsLogicalTransposed.ToString]));
+  
+  // SliceDimテスト（論理2次元をスライス）
+  Log('--- SliceDim Test ---');
+  Slice1 := A.SliceDim(2, 1990);  // 論理2次元の1990をスライス
+  Log('SliceDim(2, 1990) result:');
+  Log(Slice1.ToString);
+  
+  // SliceRowテスト（論理2次元をスライス）
+  Log('--- SliceRow Test ---');
+  Slice2 := A.SliceRow(1990);  // 論理2次元の1990をスライス
+  Log('SliceRow(1990) result:');
+  Log(Slice2.ToString);
+  
+  // アクセス確認
+  Log('--- Access Verification ---');
+  Log(Format('A[1990, 5, 10] = %d', [A[1990, 5, 10]]));
+  Log(Format('A[1991, 6, 10] = %d', [A[1991, 6, 10]]));
+  Log(Format('A[1990, 7, 12] = %d', [A[1990, 7, 12]]));
+  
+  // Resetしてから再度テスト
+  Log('--- After ResetTranspose ---');
+  A.ResetTranspose;
+  Slice1 := A.SliceDim(1, 1990);
+  Log('SliceDim(1, 1990) after reset:');
+  Log(Slice1.ToString);
+  
+  Log('Slice with Logical Transpose test completed');
 end;
 
 // ① 新規生成のテスト
@@ -318,6 +427,82 @@ begin
   Result := Index;
 end;
 
+procedure TestTranspose2;
+var
+  Matrix2D, Matrix3D, Tensor3D: TFlexArray<Integer>;
+  Transposed2D, Transposed3D, Swapped3D: TFlexArray<Integer>;
+  i, j, k: Integer;
+begin
+  Log('=== Transposeテスト ===');
+
+  // 1. 2次元行列の転置テスト
+  Log('1. 2次元行列の転置テスト:');
+  Matrix2D := TFlexArray<Integer>.Create([3, 4], 1);
+  Matrix2D.Map(SequentialNumber);
+  Log('元の行列 (3x4):');
+  Log(Matrix2D.ToString);
+  Log('');
+
+  Matrix2D.LogicalTranspose([2,1]);
+  Log('転置後の行列 (4x3):');
+  Log(Matrix2D.ToString);
+  Log('');
+
+  // 2. 3次元テンソルの転置テスト
+  Log('2. 3次元テンソルの転置テスト:');
+  Matrix3D := TFlexArray<Integer>.Create([2, 3, 4], 1);
+  Matrix3D.Map(SequentialNumber);
+  Log('元のテンソル (2x3x4):');
+  Log(Matrix3D.ToString);
+  Log('');
+
+  // 次元の入れ替え [1,2,3] → [3,2,1]
+  Matrix3D.LogicalTranspose([3, 2, 1]);
+  Log('転置後のテンソル (4x3x2) - [1,2,3]→[3,2,1]:');
+  Log(Matrix3D.ToString);
+  Log('');
+
+  // 次元の入れ替え [1,2,3] → [2,3,1]
+  Matrix3D.LogicalTranspose([2, 3, 1]);
+  Log('転置後のテンソル (3x4x2) - [1,2,3]→[2,3,1]:');
+  Log(Matrix3D.ToString);
+  Log('');
+
+  // 3. 4次元テンソルの転置テスト
+  Log('3. 4次元テンソルの転置テスト:');
+  Tensor3D := TFlexArray<Integer>.Create([2, 3, 2, 2], 1);
+  Tensor3D.Map(SequentialNumber);
+  Log('元のテンソル (2x3x2x2):');
+  Log(Tensor3D.ToString);
+  Log('');
+
+  // 次元の入れ替え [1,2,3,4] → [4,3,2,1]
+  Tensor3D.LogicalTranspose([4, 3, 2, 1]);
+  Log('転置後のテンソル (2x2x3x2) - [1,2,3,4]→[4,3,2,1]:');
+  Log(Tensor3D.ToString);
+  Log('');
+
+  // 4. 転置の検証テスト
+  Log('4. 転置の検証テスト:');
+  var TestMatrix := TFlexArray<Integer>.Create([2, 3], 1);
+  TestMatrix[1, 1] := 1; TestMatrix[1, 2] := 2; TestMatrix[1, 3] := 3;
+  TestMatrix[2, 1] := 4; TestMatrix[2, 2] := 5; TestMatrix[2, 3] := 6;
+
+  Log('元の行列:');
+  Log(TestMatrix.ToString);
+
+  TestMatrix.LogicalTranspose([2,1]);
+  Log('転置後の行列:');
+  Log(TestMatrix.ToString);
+
+  // 検証: [i,j] → [j,i]
+  Log('検証:');
+//  Log(Format('元の[1,2]=%d → 転置後[2,1]=%d', [TestMatrix[1, 2], TestTransposed[2, 1]]));
+//  Log(Format('元の[2,3]=%d → 転置後[3,2]=%d', [TestMatrix[2, 3], TestTransposed[3, 2]]));
+  Log('');
+
+  Log('=== Transposeテスト完了 ===');
+end;
 
 procedure TestTranspose;
 var
@@ -394,6 +579,238 @@ begin
   Log('');
 
   Log('=== Transposeテスト完了 ===');
+end;
+
+procedure TestPromoteDemoteDimension;
+var
+  Vector1D, Matrix2D, Tensor3D: TFlexArray<Integer>;
+  Promoted1D, Promoted2D, Promoted3D: TFlexArray<Integer>;
+  Demoted2D, Demoted3D, Demoted4D: TFlexArray<Integer>;
+  i, j, k: Integer;
+begin
+  Log('=== PromoteDimension/DemoteDimensionテスト ===');
+  
+  // 1. 1次元配列の昇格テスト
+  Log('1. 1次元配列の昇格テスト:');
+  Vector1D := TFlexArray<Integer>.Create([3], 1);
+  Vector1D.Map(SequentialNumber);
+  Log('元の1次元配列 (1..3):');
+  Log(Vector1D.ToString);
+  Log('範囲: ' + Vector1D.ToRangesString);
+  
+  // TargetDim=1で昇格（先頭に次元を追加）
+  Promoted1D := Vector1D;
+  Promoted1D.PromoteDimension(1);
+  Log('PromoteDimension(1) - 2次元配列 (1x3):');
+  Log(Promoted1D.ToString);
+  Log('範囲: ' + Promoted1D.ToRangesString);
+  Log('');
+  
+  // TargetDim=2で昇格（末尾に次元を追加）
+  Promoted1D := Vector1D;
+  Promoted1D.PromoteDimension(2);
+  Log('PromoteDimension(2) - 2次元配列 (3x1):');
+  Log(Promoted1D.ToString);
+  Log('範囲: ' + Promoted1D.ToRangesString);
+  Log('');
+  
+  // 2. 2次元配列の昇格テスト
+  Log('2. 2次元配列の昇格テスト:');
+  Vector1D := TFlexArray<Integer>.Create([6], 1);
+  Vector1D.Map(SequentialNumber);
+  Matrix2D := TFlexArray<Integer>.CreateFromFlexArray(Vector1D);
+  Matrix2D.Reshape([2, 3], 1);
+  Log('元の2次元配列 (2x3):');
+  Log(Matrix2D.ToString);
+  Log('範囲: ' + Matrix2D.ToRangesString);
+  
+  // TargetDim=1で昇格
+  Promoted2D := Matrix2D;
+  Promoted2D.PromoteDimension(1);
+  Log('PromoteDimension(1) - 3次元配列 (1x2x3):');
+  Log(Promoted2D.ToString);
+  Log('範囲: ' + Promoted2D.ToRangesString);
+  
+  // TargetDim=2で昇格
+  Promoted2D := Matrix2D;
+  Promoted2D.PromoteDimension(2);
+  Log('PromoteDimension(2) - 3次元配列 (2x1x3):');
+  Log(Promoted2D.ToString);
+  Log('範囲: ' + Promoted2D.ToRangesString);
+  
+  // TargetDim=3で昇格
+  Promoted2D := Matrix2D;
+  Promoted2D.PromoteDimension(3);
+  Log('PromoteDimension(3) - 3次元配列 (2x3x1):');
+  Log(Promoted2D.ToString);
+  Log('範囲: ' + Promoted2D.ToRangesString);
+  Log('');
+  
+  // 3. 3次元配列の昇格テスト
+  Log('3. 3次元配列の昇格テスト:');
+  Vector1D := TFlexArray<Integer>.Create([8], 1);
+  Vector1D.Map(SequentialNumber);
+  Tensor3D := TFlexArray<Integer>.CreateFromFlexArray(Vector1D);
+  Tensor3D.Reshape([2, 2, 2], 1);
+  Log('元の3次元配列 (2x2x2):');
+  Log(Tensor3D.ToString);
+  Log('範囲: ' + Tensor3D.ToRangesString);
+  
+  // TargetDim=2で昇格
+  Promoted3D := Tensor3D;
+  Promoted3D.PromoteDimension(2);
+  Log('PromoteDimension(2) - 4次元配列 (2x1x2x2):');
+  Log(Promoted3D.ToString);
+  Log('範囲: ' + Promoted3D.ToRangesString);
+  Log('');
+  
+  // 4. DemoteDimensionテスト
+  Log('4. DemoteDimensionテスト:');
+  
+  // 2次元配列の削除テスト
+  Log('4.1 2次元配列の次元削除:');
+  Vector1D := TFlexArray<Integer>.Create([6], 1);
+  Vector1D.Map(SequentialNumber);
+  Matrix2D := TFlexArray<Integer>.CreateFromFlexArray(Vector1D);
+  Matrix2D.Reshape([2, 1, 3], 1);
+  Log('元の3次元配列 (2x1x3):');
+  Log(Matrix2D.ToString);
+  Log('範囲: ' + Matrix2D.ToRangesString);
+  
+  // TargetDim=2で削除
+  Demoted3D := Matrix2D;
+  Demoted3D.DemoteDimension(2);
+  Log('DemoteDimension(2) - 2次元配列 (2x3):');
+  Log(Demoted3D.ToString);
+  Log('範囲: ' + Demoted3D.ToRangesString);
+  Log('');
+  
+  // 3次元配列の削除テスト
+  Log('4.2 3次元配列の次元削除:');
+  Vector1D := TFlexArray<Integer>.Create([12], 1);
+  Vector1D.Map(SequentialNumber);
+  Tensor3D := TFlexArray<Integer>.CreateFromFlexArray(Vector1D);
+  Tensor3D.Reshape([1, 2, 2, 3], 1);
+  Log('元の4次元配列 (1x2x2x3):');
+  Log(Tensor3D.ToString);
+  Log('範囲: ' + Tensor3D.ToRangesString);
+  
+  // TargetDim=1で削除
+  Demoted4D := Tensor3D;
+  Demoted4D.DemoteDimension(1);
+  Log('DemoteDimension(1) - 3次元配列 (2x2x3):');
+  Log(Demoted4D.ToString);
+  Log('範囲: ' + Demoted4D.ToRangesString);
+  Log('');
+  
+  // 5. 昇格・降格のチェーンテスト
+  Log('5. 昇格・降格のチェーンテスト:');
+  Vector1D := TFlexArray<Integer>.Create([4], 1);
+  Vector1D.Map(SequentialNumber);
+  Log('開始: 1次元配列 (1..4):');
+  Log(Vector1D.ToString);
+  
+  // 1D → 2D → 3D → 2D → 1D
+  Promoted1D := Vector1D;
+  Promoted1D.PromoteDimension(2);  // 1D → 2D (4x1)
+  Log('昇格: 2次元配列 (4x1):');
+  Log(Promoted1D.ToString);
+  
+  Promoted1D.PromoteDimension(1);  // 2D → 3D (1x4x1)
+  Log('昇格: 3次元配列 (1x4x1):');
+  Log(Promoted1D.ToString);
+  
+  Promoted1D.DemoteDimension(1);   // 3D → 2D (4x1)
+  Log('降格: 2次元配列 (4x1):');
+  Log(Promoted1D.ToString);
+  
+  Promoted1D.DemoteDimension(2);   // 2D → 1D (4)
+  Log('降格: 1次元配列 (4):');
+  Log(Promoted1D.ToString);
+  Log('');
+  
+  // 6. BaseIndex保持テスト
+  Log('6. BaseIndex保持テスト:');
+  Vector1D := TFlexArray<Integer>.CreateFromRange('[5..6, 10..12]');
+  Vector1D.Map(SequentialNumber);
+  Matrix2D := TFlexArray<Integer>.CreateFromFlexArray(Vector1D);
+  Matrix2D.Reshape([2, 3], 5);
+  Log('元の配列 (BaseIndex=[5,10]):');
+  Log(Matrix2D.ToString);
+  Log('範囲: ' + Matrix2D.ToRangesString);
+  
+  Promoted2D := Matrix2D;
+  Promoted2D.PromoteDimension(2);
+  Log('昇格後 (BaseIndex=[5,10,1]):');
+  Log(Promoted2D.ToString);
+  Log('範囲: ' + Promoted2D.ToRangesString);
+  Log('');
+  
+  // 7. ラウンドトリップ検証テスト（Promote→Demote後に元の値と一致するか）
+  Log('7. ラウンドトリップ検証テスト:');
+  
+  // 1次元配列のラウンドトリップ
+  Vector1D := TFlexArray<Integer>.Create([3], 1);
+  Vector1D.Map(SequentialNumber);
+  Promoted1D := TFlexArray<Integer>.CreateFromFlexArray(Vector1D);
+  Log('元の1次元配列:');
+  Log('  ToString: ' + Vector1D.ToString);
+  Log('  ToRangesString: ' + Vector1D.ToRangesString);
+  
+  Promoted1D.PromoteDimension(1);  // 1D → 2D (1x3)
+  Promoted1D.DemoteDimension(1);   // 2D → 1D
+  Log('PromoteDimension(1)→DemoteDimension(1)後:');
+  Log('  ToString: ' + Promoted1D.ToString);
+  Log('  ToRangesString: ' + Promoted1D.ToRangesString);
+  if (Vector1D.ToString = Promoted1D.ToString) and (Vector1D.ToRangesString = Promoted1D.ToRangesString) then
+    Log('  ✓ 一致')
+  else
+    Log('  ✗ 不一致');
+  Log('');
+  
+  // 2次元配列のラウンドトリップ
+  Vector1D := TFlexArray<Integer>.Create([6], 1);
+  Vector1D.Map(SequentialNumber);
+  Matrix2D := TFlexArray<Integer>.CreateFromFlexArray(Vector1D);
+  Matrix2D.Reshape([2, 3], 1);
+  Log('元の2次元配列:');
+  Log('  ToString: ' + Matrix2D.ToString);
+  Log('  ToRangesString: ' + Matrix2D.ToRangesString);
+  
+  Promoted2D := TFlexArray<Integer>.CreateFromFlexArray(Matrix2D);
+  Promoted2D.PromoteDimension(2);  // 2D → 3D (2x3x1)
+  Promoted2D.DemoteDimension(2);   // 3D → 2D
+  Log('PromoteDimension(2)→DemoteDimension(2)後:');
+  Log('  ToString: ' + Promoted2D.ToString);
+  Log('  ToRangesString: ' + Promoted2D.ToRangesString);
+  if (Matrix2D.ToString = Promoted2D.ToString) and (Matrix2D.ToRangesString = Promoted2D.ToRangesString) then
+    Log('  ✓ 一致')
+  else
+    Log('  ✗ 不一致');
+  Log('');
+  
+  // 複数次元のラウンドトリップ
+  Vector1D := TFlexArray<Integer>.Create([4], 1);
+  Vector1D.Map(SequentialNumber);
+  Promoted1D := TFlexArray<Integer>.CreateFromFlexArray(Vector1D);
+  Log('元の1次元配列 (複数回昇格):');
+  Log('  ToString: ' + Vector1D.ToString);
+  Log('  ToRangesString: ' + Vector1D.ToRangesString);
+  
+  Promoted1D.PromoteDimension(2);  // 1D → 2D (4x1)
+  Promoted1D.PromoteDimension(1);  // 2D → 3D (1x4x1)
+  Promoted1D.DemoteDimension(1);   // 3D → 2D (1x4x1)
+  Promoted1D.DemoteDimension(2);   // 2D → 1D
+  Log('PromoteDimension(2)→PromoteDimension(1)→DemoteDimension(1)→DemoteDimension(2)後:');
+  Log('  ToString: ' + Promoted1D.ToString);
+  Log('  ToRangesString: ' + Promoted1D.ToRangesString);
+  if (Vector1D.ToString = Promoted1D.ToString) and (Vector1D.ToRangesString = Promoted1D.ToRangesString) then
+    Log('  ✓ 一致')
+  else
+    Log('  ✗ 不一致');
+  Log('');
+  
+  Log('=== PromoteDimension/DemoteDimensionテスト完了 ===');
 end;
 
 procedure TestConcat;
@@ -720,99 +1137,6 @@ begin
   Log('=== RangeStr文字列テスト完了 ===');
 end;
 
-procedure TestSumAllTypes;
-var
-  IntArray: TFlexArray<Integer>;
-  DblArray: TFlexArray<Double>;
-  StrArray: TFlexArray<string>;
-  SumResult: Integer;
-  DblSum: Double;
-  StrSum: string;
-begin
-  Log('=== Sumメソッドテスト ===');
-  Log('');
-  
-  // Integer型テスト
-  Log('--- Integer型テスト ---');
-  Log('テスト1: 基本的な整数配列');
-  IntArray := TFlexArray<Integer>.CreateFromArray([1, 2, 3, 4, 5]);
-  SumResult := IntArray.Sum;
-  Log('  配列: [1, 2, 3, 4, 5]');
-  Log('  期待値: 15, 実際値: ' + IntToStr(SumResult));
-  Log('');
-
-  Log('テスト2: 負数を含む配列');
-  IntArray := TFlexArray<Integer>.CreateFromArray([-1, 5, -3, 2], 1);
-  SumResult := IntArray.Sum;
-  Log('  配列: [-1, 5, -3, 2]');
-  Log('  期待値: 3, 実際値: ' + IntToStr(SumResult));
-  Log('');
-  
-  Log('テスト3: ゼロを含む配列');
-  IntArray := TFlexArray<Integer>.CreateFromArray([0, 10, 0, 5], 0);
-  SumResult := IntArray.Sum;
-  Log('  配列: [0, 10, 0, 5]');
-  Log('  期待値: 15, 実際値: ' + IntToStr(SumResult));
-  Log('');
-  
-  // Double型テスト
-  Log('--- Double型テスト ---');
-  Log('テスト1: 基本的な小数配列');
-  DblArray := TFlexArray<Double>.CreateFromArray([1.5, 2.3, 3.7, 4.1], 0);
-  DblSum := DblArray.Sum;
-  Log('  配列: [1.5, 2.3, 3.7, 4.1]');
-  Log('  期待値: 11.60, 実際値: ' + FormatFloat('0.00', DblSum));
-  Log('');
-
-  Log('テスト2: 負の小数を含む配列');
-  DblArray := TFlexArray<Double>.CreateFromArray([-1.2, 3.5, -2.8, 1.0]);
-  DblSum := DblArray.Sum;
-  Log('  配列: [-1.2, 3.5, -2.8, 1.0]');
-  Log('  期待値: 0.50, 実際値: ' + FormatFloat('0.00', DblSum));
-  Log('');
-
-  Log('テスト3: 非常に小さい値');
-  DblArray := TFlexArray<Double>.CreateFromArray([0.001, 0.002, 0.003]);
-  DblSum := DblArray.Sum;
-  Log('  配列: [0.001, 0.002, 0.003]');
-  Log('  期待値: 0.006000, 実際値: ' + FormatFloat('0.000000', DblSum));
-  Log('');
-  
-//  // String型テスト
-//  Log('--- String型テスト ---');
-//  Log('テスト1: 基本的な文字列配列');
-//  StrArray := TFlexArray<string>.CreateFromArray(['Hello', ' ', 'World', '!']);
-//  StrSum := StrArray.Sum;
-//  Log('  配列: ["Hello", " ", "World", "!"]');
-//  Log('  期待値: "Hello World!", 実際値: "' + StrSum + '"');
-//  Log('');
-
-//  Log('テスト2: 数字の文字列');
-//  StrArray := TFlexArray<string>.CreateFromArray(['1', '2', '3']);
-//  StrSum := StrArray.Sum;
-//  Log('  配列: ["1", "2", "3"]');
-//  Log('  期待値: "123", 実際値: "' + StrSum + '"');
-//  Log('');
-//
-//  Log('テスト3: 空文字列を含む配列');
-//  StrArray := TFlexArray<string>.CreateFromArray(['A', '', 'B', '', 'C']);
-//  StrSum := StrArray.Sum;
-//  Log('  配列: ["A", "", "B", "", "C"]');
-//  Log('  期待値: "ABC", 実際値: "' + StrSum + '"');
-//  Log('');
-
-  // 多次元配列テスト
-  Log('--- 多次元配列テスト ---');
-  Log('テスト1: 2次元Integer配列');
-  IntArray := TFlexArray<Integer>.CreateFromRange([[-1, 3], [1, 2]]);
-  IntArray.Map(SequentialNumber);
-  SumResult := IntArray.max;
-  Log(IntArray.ToString);
-  Log('  期待値: 10, 実際値: ' + IntToStr(SumResult));
-  Log('');
-  
-  Log('=== Sumメソッドテスト完了 ===');
-end;
 
 procedure TestUltimateChaosSlice;
 var
@@ -856,15 +1180,15 @@ begin
   Dim := 2;
   for i := Data4D.Low(Dim) to Data4D.High(Dim) do
   begin
-    Data3D := Data4D.ChooseSlice(Dim, i);
+    Data3D := Data4D.SliceDim(Dim, i);
 
     for j := Data3D.Low(Dim) to Data3D.High(Dim) do
     begin
-      Data2D := Data3D.ChooseSlice(Dim, j);
+      Data2D := Data3D.SliceDim(Dim, j);
 
       for k := Data2D.Low(Dim) to Data2D.High(Dim) do
       begin
-        Data1D := Data2D.ChooseSlice(Dim, k);
+        Data1D := Data2D.SliceDim(Dim, k);
 
         for l := Data1D.Low(1) to Data1D.High(1) do
         begin
@@ -921,7 +1245,7 @@ end;
 ////  begin
 ////    LOg(Format('[Page %d]', [p]));
 ////    // 1次元目(Page)でスライスして、残りの2次元をToStringで表示
-////    Log(Flex.ChooseSlice(1, p).ToString);
+////    Log(Flex.SliceDim(1, p).ToString);
 ////    Log('');
 ////  end;
 ////
@@ -941,15 +1265,97 @@ end;
 //end;
 
 
-// ChooseSliceのテスト
-procedure TestChooseSlice;
+// SliceDimのテスト
+procedure TestSliceDimIndexesCounterReset;
+var
+  Matrix2D, Matrix3D: TFlexArray<Integer>;
+  InsertArray: TFlexArray<Integer>;
+  ResultArray: TFlexArray<Integer>;
+  Vector1D: TFlexArray<Integer>;
+begin
+  Log('=== SliceDimIndexesCore カウンタリセットテスト ===');
+  
+  // 1. 2次元配列での列方向挿入テスト（カウンタリセット発生）
+  Log('1. 2次元配列 列方向挿入テスト:');
+  Matrix2D := TFlexArray<Integer>.Create([2, 3], 1);
+  Matrix2D.Map(SequentialNumber);
+  Log('元の行列 (2x3):');
+  Log(Matrix2D.ToString);
+  
+  InsertArray := TFlexArray<Integer>.Create([2, 2], 1);
+  InsertArray.Map(function(const Value: Integer; const Coords: TCoords): Integer
+                 begin
+                   Result := 100 + Coords[0] * 10 + Coords[1];
+                 end);
+  Log('挿入配列 (2x2):');
+  Log(InsertArray.ToString);
+
+  // 次元2（列方向）の位置2に挿入 → 座標減少が発生
+  ResultArray := Matrix2D.InsertDim(2, 2, InsertArray);
+  Log('InsertDim(2, 2, InsertArray) 結果 (2x5):');
+  Log(ResultArray.ToString);
+  Log('');
+  
+  // 2. 3次元配列での深さ方向挿入テスト
+  Log('2. 3次元配列 深さ方向挿入テスト:');
+  Matrix3D := TFlexArray<Integer>.Create([2, 2, 2], 1);
+  Matrix3D.Map(SequentialNumber);
+  Log('元のテンソル (2x2x2):');
+  Log(Matrix3D.ToString);
+  
+  InsertArray := TFlexArray<Integer>.Create([1, 2, 2], 1);
+  InsertArray.Map(function(const Value: Integer; const Coords: TCoords): Integer
+                 begin
+                   Result := 200 + Coords[0] * 100 + Coords[1] * 10 + Coords[2];
+                 end);
+  Log('挿入配列 (1x2x2):');
+  Log(InsertArray.ToString);
+  
+  // 次元1（深さ方向）の位置2に挿入
+  ResultArray := Matrix3D.InsertDim(1, 2, InsertArray);
+  Log('InsertDim(1, 2, InsertArray) 結果 (3x2x2):');
+  Log(ResultArray.ToString);
+  Log('');
+  
+  // 3. 複数回挿入でのカウンタリセット連続発生テスト
+  Log('3. 複数回挿入テスト:');
+  Vector1D := TFlexArray<Integer>.Create([4], 1);
+  Vector1D.Map(SequentialNumber);
+  Log('元の1次元配列:');
+  Log(Vector1D.ToString);
+  
+  // 2次元に変換してから複数回挿入
+  Vector1D.Reshape([2, 2], 1);
+  Log('2次元変換後 (2x2):');
+  Log(Vector1D.ToString);
+  
+  // 2回連続で挿入（カウンタリセットが複数回発生）
+  InsertArray := TFlexArray<Integer>.Create([2, 1], 1);
+  InsertArray.Map(function(const Value: Integer; const Coords: TCoords): Integer
+                 begin
+                   Result := 300 + Coords[0] * 10 + Coords[1];
+                 end);
+  
+  ResultArray := Vector1D.InsertDim(2, 2, InsertArray);
+  Log('1回目挿入後 (2x3):');
+  Log(ResultArray.ToString);
+  
+  ResultArray := ResultArray.InsertDim(2, 3, InsertArray);
+  Log('2回目挿入後 (2x4):');
+  Log(ResultArray.ToString);
+  Log('');
+  
+  Log('=== カウンタリセットテスト完了 ===');
+end;
+
+procedure TestSliceDim;
 var
   Matrix2D, Matrix3D: TFlexArray<Integer>;
   Row1, Row2, Col1, Col2: TFlexArray<Integer>;
   Slice1, Slice2: TFlexArray<Integer>;
   Page1, Page2: TFlexArray<Integer>;
 begin
-  Log('=== ChooseSlice/ChooseRow/ChooseCol テスト ===');
+  Log('=== SliceDim/SliceRow/ChooseCol テスト ===');
 
   // 1. 2次元行列の準備
   Log('1. 2次元行列 (3x4) を準備:');
@@ -958,25 +1364,25 @@ begin
   Log(Matrix2D.ToString);
   Log('');
 
-  // 2. ChooseRowテスト
-  Log('2. ChooseRowテスト:');
-  Log('  Row1 = ChooseRow(1):');
-  Row1 := Matrix2D.ChooseRow(1);
+  // 2. SliceRowテスト
+  Log('2. SliceRowテスト:');
+  Log('  Row1 = SliceRow(1):');
+  Row1 := Matrix2D.SliceRow(1);
   Log(Row1.ToString);
 
-  Log('  Row2 = ChooseRow(2):');
-  Row2 := Matrix2D.ChooseRow(2);
+  Log('  Row2 = SliceRow(2):');
+  Row2 := Matrix2D.SliceRow(2);
   Log(Row2.ToString);
   Log('');
 
   // 3. ChooseColテスト
   Log('3. ChooseColテスト:');
   Log('  Col1 = ChooseCol(1):');
-  Col1 := Matrix2D.ChooseCol(1);
+  Col1 := Matrix2D.SliceCol(1);
   Log(Col1.ToString);
 
   Log('  Col2 = ChooseCol(2):');
-  Col2 := Matrix2D.ChooseCol(2);
+  Col2 := Matrix2D.SliceCol(2);
   Log(Col2.ToString);
   Log('');
 
@@ -987,39 +1393,39 @@ begin
   Log(Matrix3D.ToString);
   Log('');
 
-  // 5. ChooseSliceテスト（3次元）
-  Log('5. ChooseSliceテスト（3次元）:');
-  Log('  Page1 = ChooseSlice(1, 1):');
-  Page1 := Matrix3D.ChooseSlice(1, 1);
+  // 5. SliceDimテスト（3次元）
+  Log('5. SliceDimテスト（3次元）:');
+  Log('  Page1 = SliceDim(1, 1):');
+  Page1 := Matrix3D.SliceDim(1, 1);
   Log(Page1.ToString);
 
-  Log('  Page2 = ChooseSlice(1, 2):');
-  Page2 := Matrix3D.ChooseSlice(1, 2);
+  Log('  Page2 = SliceDim(1, 2):');
+  Page2 := Matrix3D.SliceDim(1, 2);
   Log(Page2.ToString);
   Log('');
 
-  // 6. ChooseSliceテスト（2次元目）
-  Log('6. ChooseSliceテスト（2次元目）:');
-  Log('  Slice1 = ChooseSlice(2, 1):');
-  Slice1 := Matrix3D.ChooseSlice(2, 1);
+  // 6. SliceDimテスト（2次元目）
+  Log('6. SliceDimテスト（2次元目）:');
+  Log('  Slice1 = SliceDim(2, 1):');
+  Slice1 := Matrix3D.SliceDim(2, 1);
   Log(Slice1.ToString);
 
-  Log('  Slice2 = ChooseSlice(2, 2):');
-  Slice2 := Matrix3D.ChooseSlice(2, 2);
+  Log('  Slice2 = SliceDim(2, 2):');
+  Slice2 := Matrix3D.SliceDim(2, 2);
   Log(Slice2.ToString);
   Log('');
 
-  // 7. 1次元配列のChooseSliceテスト
-  Log('7. 1次元配列のChooseSliceテスト:');
+  // 7. 1次元配列のSliceDimテスト
+  Log('7. 1次元配列のSliceDimテスト:');
   var Vec1D := TFlexArray<Integer>.Create([5], 1);
   Vec1D.Map(SequentialNumber);
   Log('  元の1次元配列:');
   Log(Vec1D.ToString);
-  Log('  ChooseSlice(1, 3):');
+  Log('  SliceDim(1, 3):');
   Log('  結果: ' + Vec1D[3].ToString);
   Log('');
 
-  Log('=== ChooseSliceテスト完了 ===');
+  Log('=== SliceDimテスト完了 ===');
 end;
 
 procedure TForm1.Button1Click(Sender: TObject);
@@ -1097,20 +1503,117 @@ begin
 //  Log('=== コンストラクタテスト完了 ===')
 
 
-//  TestReshapeChain;
-//  TestPerformance;
+  TestReshapeChain;
+  TestPerformance;
 //  TestMapDateCreation; // Map日付作成テスト
-//  Test_New;        // 新規作成
-//  Test_1D_Ref;    // 1次元参照
-//  Test_3D_New;
-//  Memo1.Lines.Add('--- テスト完了 ---');
-//   TestUltimateChaosSlice;
-//  TestTranspose;
-//  TestChooseSlice;  // ChooseSlice/ChooseRow/ChooseCol テスト
-//  TestConcat;
-//  TestAppendArrayStrings;  // AppendArray文字列テスト
-//  TestRangeStringOperations;  // RangeStr文字列テスト
-  TestSumAllTypes;  // Sumメソッドテスト
+  Test_LogicalTranspose;  // 論理転置テスト
+//  Test_SliceWithLogicalTranspose;  // Slice系テスト
+  Test_New;        // 新規作成
+  Test_1D_Ref;    // 1次元参照
+  Test_3D_New;
+  Memo1.Lines.Add('--- テスト完了 ---');
+   TestUltimateChaosSlice;
+  TestTranspose;
+  Log('******************************************');
+  TestTranspose2;
+  TestSliceDim;  // SliceDim/SliceRow/ChooseCol テスト
+  TestPromoteDemoteDimension;
+  TestSliceDimIndexesCounterReset;
+  TestAppendArrayStrings;  // AppendArray文字列テスト
+  TestRangeStringOperations;  // RangeStr文字列テスト
+//  TestSumAllTypes;  // Sumメソッドテスト
+end;
+
+procedure TForm1.Button2Click(Sender: TObject);
+var
+  N: INumpasInt;
+  i, j: Integer;
+  Sum: Integer;
+  ResultArray: INumpasInt;
+  Coords: TCoords;
+begin
+  Memo1.Lines.Add('=== TNumpasInt Reduce テスト ===');
+
+  // 3x3配列を作成
+  N := TNumpasInt.Create([2,5], 1);
+
+  // データを設定
+  // for i := N.Low(1) to N.High(1) do
+  //   for j := N.Low(2) to N.High(2) do
+  //     N[i, j] := i * 10 + j;  // 11, 12, 13, 21, 22, 23, 31, 32, 33
+
+  // データを設定 - InitializeCoordsとIncCoordsを使用
+  N.Data.InitializeCoords(Coords);
+  for i := 1 to N.TotalSize do
+  begin
+    N.ItemAt[Coords] := Coords[0] * 100 + Coords[1];
+    N.Data.IncCoords(Coords);
+  end;
+
+
+  N[1,2] := 126;
+
+  Memo1.Lines.Add('元の配列:');
+  Memo1.Lines.Add(N.Data.ToString);
+  Memo1.Lines.Add(N.Data.ToRangesString);
+  N.Data.Reshape([5,2], 0);
+  N[0,1] := 256;
+  N[1,0] := 64;
+  Memo1.Lines.Add(N.Data.ToString);
+  Memo1.Lines.Add(N.Data.ToRangesString);
+
+
+
+  // Reduceテスト（全要素の合計）
+  Sum := N.Reduce(
+    function(const Acc: Integer; const Value: Integer): Integer
+    begin
+      Result := Acc + Value;
+    end,
+    0
+  );
+  Memo1.Lines.Add(Format('全要素の合計: %d', [Sum]));  // 11+12+13+21+22+23+31+32+33 = 198
+
+  // Reduceテスト（最大値）
+  var MaxValue := N.Reduce(
+    function(const Acc: Integer; const Value: Integer): Integer
+    begin
+      if Value > Acc then
+        Result := Value
+      else
+        Result := Acc;
+    end,
+    -MaxInt
+  );
+  Memo1.Lines.Add(Format('最大値: %d', [MaxValue]));  // 33
+
+  // Reduceテスト（平均値）
+  var Avg := N.Reduce(
+    function(const Acc: Integer; const Value: Integer): Integer
+    begin
+      Result := Acc + Value;
+    end,
+    0
+  ) / N.TotalSize;
+  Memo1.Lines.Add(Format('平均値: %.2f', [Avg]));  // 198 / 9 = 22.00
+
+  // 次元削減Reduceテスト（コメントアウト中）
+  Memo1.Lines.Add('次元削減Reduceは現在コメントアウトされています');
+  {
+  // 行ごとの合計（次元2を削減）
+  ResultArray := N.Reduce(
+    [2],  // 次元2を削減
+    function(const Acc: Integer; const Value: Integer; const Coords: TCoords): Integer
+    begin
+      Result := Acc + Value;
+    end,
+    0
+  );
+  Memo1.Lines.Add('行ごとの合計:');
+  for i := 1 to ResultArray.DimensionCount do
+    Memo1.Lines.Add(Format('行%d: %.1f', [i, ResultArray[i]]));
+  }
+
 end;
 
 end.
