@@ -104,6 +104,7 @@ type
     function TransposeCore(const NewDims: array of Integer): TFlexArray<T>;
     function SliceDimIndexesCore(Dim: Integer; const Indexes: TArray<Integer>): TFlexArray<T>; overload;
     function SliceDimIndexesCore(Dim: Integer; const Indexes: TArray<Integer>; const Another: TFlexArray<T>; Index: Integer): TFlexArray<T>; overload;
+    function SliceCore(const NewRanges, Ranges: TFlexRanges): TFlexArray<T>;
     function GetEnumerator: TFlexArrayEnumerator<T>;
 
   public
@@ -124,14 +125,14 @@ type
     function GetCoords(LinearIndex: Integer): TCoords;
     function GetOffset(const Coords: array of Integer): Integer;
 
+    procedure InitializeCoords(var Coords: TCoords);
+    function IncCoords(var Coords: TCoords): Boolean;
+
     property ItemAt[const Coords: TCoords]: T read GetValue write SetValue;
     property Items[const Coords: array of Integer]: T read GetValue write SetValue; default;
     property Elements[Index: Integer]: T read GetElement write SetElement;
     property DimensionCount: Integer read GetDimensionCount;
     property TotalSize: Integer read FTotalSize;
-
-    procedure InitializeCoords(var Coords: TCoords);
-    function IncCoords(var Coords: TCoords): Boolean;
 
     procedure Reshape(const Shapes: array of Integer; BaseIndex: Integer);
     procedure ReshapeVector(BaseIndex: Integer); // 1D
@@ -157,6 +158,7 @@ type
     function SliceColRange(const Range: TFlexRange): TFlexArray<T>;  // 2D
     function SliceDimIndexes(Dim: Integer; const Indexes: TArray<Integer>): TFlexArray<T>; overload;
     function SliceDimIndexes(Dim: Integer; const Indexes: TArray<Integer>; BaseIndex: Integer): TFlexArray<T>; overload;
+    function Slice(Ranges: TFlexRanges): TFlexArray<T>; overload;
 
     // 2D配列の行・列挿入
     function InsertRow(RowIndex: Integer; const Another: TFlexArray<T>): TFlexArray<T>; overload;
@@ -1140,6 +1142,102 @@ function TFlexArray<T>.SliceRow(RowIndex: Integer): TFlexArray<T>;
 begin
   CheckDimension(2);
   Result := SliceDim(1, RowIndex);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 自由自在に配列をスライス
+// [引数] 切り抜く座標（すべての次元の設定要）
+// [戻値] 切取り後の配列
+// [使用例] NewArr := arr.Slice([[1, 5], [2, 8], []]);
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.Slice(Ranges: TFlexRanges): TFlexArray<T>;
+var
+  i: Integer;
+  Range: TFlexRange;
+  SingleDimCount: Integer;
+  TargetDim: TFlexDimension;
+begin
+  // 入力チェック
+  if System.Length(Ranges) <> Self.DimensionCount then
+    raise Exception.CreateFmt('Slice: 指定された次元数(%d)が配列の次元数(%d)と一致しません',
+      [System.Length(Ranges), Self.DimensionCount]);
+
+  SingleDimCount := 0;
+  for i := 0 to System.High(Ranges) do
+  begin
+    TargetDim := Self.FDims.Items[i + 1];
+    Range := Ranges[i];
+    case System.Length(Range) of
+      0: begin
+          // OK
+        end;
+      1: begin
+          // 単一指定
+          if (TargetDim.Low <= Range.Low) and (Range.Low <= TargetDim.High) then begin
+          end else begin
+            raise Exception.CreateFmt('Slice: 第%d次元の指定%dが範囲外です[%d..%d]',
+              [i + 1, Range.Low, TargetDim.Low, TargetDim.High]);
+          end;
+          Inc(SingleDimCount);
+        end;
+      2: begin
+          // 範囲指定
+          if (TargetDim.Low <= Range.Low) and (Range.High <= TargetDim.High) and (Range.Low <= Range.High) then begin
+          end else begin
+            raise Exception.CreateFmt('Slice: 第%d次元の範囲指定[%d..%d]が無効です[%d..%d]',
+              [i + 1, Range.Low, Range.High, TargetDim.Low, TargetDim.High]);
+          end;
+        end;
+      else
+        raise Exception.CreateFmt('Slice: 第%d次元の指定形式が無効です', [i + 1]);
+    end;
+  end;
+
+  if Self.DimensionCount = SingleDimCount then
+    raise Exception.Create('Slice: 全ての次元が単一指定されています。スカラー値を取得してください。');
+
+  Result := SliceCore(Ranges);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] スライス範囲からResult配列を作成し、Selfから要素をコピーするコア関数
+// [引数] Ranges - スライス範囲を表現する次元情報
+// [戻値] スライスされた配列
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.SliceCore(const Ranges: TFlexRanges): TFlexArray<T>;
+var
+  i: Integer;
+  ResultCoords: TCoords;
+  NewRanges: TFlexRanges;
+  TargetDim: TFlexDimension;
+begin
+  SetLength(NewRanges, Self.DimensionCount);
+  for i := 0 to System.High(Ranges) do
+  begin
+    TargetDim := Self.FDims.Items[i + 1];
+    case System.Length(Ranges[i]) of
+      0: NewRanges[i] := [TargetDim.Low, TargetDim.High];
+      1: NewRanges[i] := [Ranges[i].Low, Ranges[i].Low];
+      2: NewRanges[i] := [Ranges[i].Low, Ranges[i].High];
+    end;
+  end;
+
+  Result := TFlexArray<T>.CreateFromRange(NewRanges);
+  Result.InitializeCoords(ResultCoords);
+
+  // Resultの座標イテレーションで、Selfからスライス範囲の要素を取得
+  for i := 0 to Result.FTotalSize - 1 do
+  begin
+    Result.FData[i] := Self.ItemAt[ResultCoords];
+    Result.IncCoords(ResultCoords);
+  end;
+
+  // つぶす次元を後方からDemoteDimensionで処理
+  for i := System.High(Ranges) downto 0 do
+  begin
+    if System.Length(Ranges[i]) = 1 then
+      Result.DemoteDimension(i + 1);  // 1次元ずつつぶす
+  end;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
