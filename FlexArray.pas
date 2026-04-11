@@ -104,7 +104,7 @@ type
     function TransposeCore(const NewDims: array of Integer): TFlexArray<T>;
     function SliceDimIndexesCore(Dim: Integer; const Indexes: TArray<Integer>): TFlexArray<T>; overload;
     function SliceDimIndexesCore(Dim: Integer; const Indexes: TArray<Integer>; const Another: TFlexArray<T>; Index: Integer): TFlexArray<T>; overload;
-    function SliceCore(const NewRanges, Ranges: TFlexRanges): TFlexArray<T>;
+    function SliceCore(const Ranges: TFlexRanges): TFlexArray<T>;
     function GetEnumerator: TFlexArrayEnumerator<T>;
 
   public
@@ -114,6 +114,7 @@ type
     constructor CreateFromRange(const RangeStr: string); overload;
     constructor CreateFromFlexArray(const Src: TFlexArray<T>); overload;
     constructor CreateFromArray(const Src: TArray<T>; BaseIndex: Integer = 0); overload;
+    constructor CreateFromValues(const Values: array of T; BaseIndex: Integer = 0); overload;
     constructor ViewFromArray(const Src: TArray<T>; BaseIndex: Integer = 0); overload;
 
     function Low: Integer; overload;  // 1D
@@ -139,7 +140,8 @@ type
     procedure ReshapeRange(const Range: TFlexRange); overload; // 1D
     procedure ReshapeRange(const Ranges: TFlexRanges); overload; // nD
     procedure ReshapeRange(const RangeStr: string); overload;
-    procedure NormalizeToBaseIndex(BaseIndex: Integer);
+    procedure Rebase(BaseIndex: Integer); overload;
+    procedure Rebase(const BaseIndexes: array of Integer); overload;
 
     function ToVector(): TArray<T>;
     function ToString(): string;
@@ -491,6 +493,22 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
+// [概要] 一次元配列簡易生成コンストラクタ
+// [引数] Values: 配列の要素値, BaseIndex: ベースインデックス(省略時:0)
+// [戻値] なし
+// [使用例] TFlexArray<Integer>.CreateFromValues([1,2,3,4], 0)
+//////////////////////////////////////////////////////////////////////////////////////
+constructor TFlexArray<T>.CreateFromValues(const Values: array of T; BaseIndex: Integer = 0);
+var
+  i: Integer;
+begin
+  InitializeDimensions([[BaseIndex, BaseIndex + System.Length(Values) - 1]]);
+  SetLength(FData, System.Length(Values));
+  for i := 0 to System.High(Values) do
+    FData[i] := Values[i];
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
 // [概要] 参照生成コンストラクタ
 // [引数] 元の動的配列, 開始インデックス(省略時:0)
 // [戻値] なし
@@ -568,6 +586,53 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
+// [概要] ベースインデックスを再設定
+// [引数] BaseIndex - 新しいベースインデックス
+// [戻値] なし
+//////////////////////////////////////////////////////////////////////////////////////
+procedure TFlexArray<T>.Rebase(BaseIndex: Integer);
+var
+  i: Integer;
+  Shapes: TArray<Integer>;
+begin
+  if IsLogicalTransposed then
+    raise Exception.Create('Rebase: 論理転置状態では実行できません');
+
+  // 現在の形状を取得
+  SetLength(Shapes, Self.DimensionCount);
+  for i := 0 to system.High(Shapes) do
+    Shapes[i] := Self.FDims.Items[i + 1].Len; // 論理次元アクセス（1-base）
+
+  Reshape(Shapes, BaseIndex);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 各次元のベースインデックスを個別に指定して再設定
+// [引数] BaseIndexes - 各次元のベースインデックス配列
+// [戻値] なし
+//////////////////////////////////////////////////////////////////////////////////////
+procedure TFlexArray<T>.Rebase(const BaseIndexes: array of Integer);
+var
+  i: Integer;
+  NewRanges: TFlexRanges;
+begin
+  if IsLogicalTransposed then
+    raise Exception.Create('Rebase: 論理転置状態では実行できません');
+
+  if System.Length(BaseIndexes) <> Self.DimensionCount then
+    raise Exception.CreateFmt('Rebase: 指定された次元数(%d)が配列の次元数(%d)と一致しません',
+      [System.Length(BaseIndexes), Self.DimensionCount]);
+
+  SetLength(NewRanges, Self.DimensionCount);
+  for i := 0 to System.High(BaseIndexes) do
+  begin
+    NewRanges[i] := [BaseIndexes[i], BaseIndexes[i] + Self.FDims.Items[i + 1].Len - 1];
+  end;
+
+  ReshapeRange(NewRanges);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
 // [概要] 次元数のチェック
 // [引数] 期待される次元数
 // [戻値] なし
@@ -600,25 +665,6 @@ begin
 
     raise Exception.Create('Viewモードの配列は変更できません。CreateFromFlexArrayでコピーしてから使用してください。');
   end;
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
-// [概要] すべての次元のベースインデックスを指定された値に統一
-// [引数] BaseIndex - 目標のベースインデックス
-// [戻値] なし
-// [備考] データは保持したまま次元情報のみ変更
-//////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.NormalizeToBaseIndex(BaseIndex: Integer);
-var
-  i: Integer;
-  Shapes: TArray<Integer>;
-begin
-  // 現在の形状を取得
-  SetLength(Shapes, Self.DimensionCount);
-  for i := 0 to system.High(Shapes) do
-    Shapes[i] := Self.FDims.Items[i + 1].Len; // 論理次元アクセス（1-base）
-
-  Reshape(Shapes, BaseIndex);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1148,7 +1194,8 @@ end;
 // [概要] 自由自在に配列をスライス
 // [引数] 切り抜く座標（すべての次元の設定要）
 // [戻値] 切取り後の配列
-// [使用例] NewArr := arr.Slice([[1, 5], [2, 8], []]);
+// [使用例] NewArr := arr.Slice([[1, 5], [2, 8], [], [3]]);
+//         NumPyの arr[1:5, 2:8, :, 3] に相当
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.Slice(Ranges: TFlexRanges): TFlexArray<T>;
 var
@@ -1321,7 +1368,7 @@ begin
   AnotherReady.PromoteDimension(1);
 
   // BaseIndexを合わせる
-  AnotherReady.NormalizeToBaseIndex(Self.Low(1));
+  AnotherReady.Rebase(Self.Low(1));
 
   Result := InsertDim(1, RowIndex, AnotherReady);
 end;
@@ -1348,7 +1395,7 @@ begin
   AnotherReady.PromoteDimension(2);
 
   // BaseIndexを合わせる
-  AnotherReady.NormalizeToBaseIndex(Self.Low(1));
+  AnotherReady.ReBase(Self.Low(1));
 
   Result := InsertDim(2, ColIndex, AnotherReady);
 end;
@@ -1728,8 +1775,8 @@ begin
   // 1ベース以外は1ベースに正規化
   if BaseIndex <> 1 then
   begin
-    SelfReady.NormalizeToBaseIndex(1);
-    AnotherReady.NormalizeToBaseIndex(1);
+    SelfReady.ReBase(1);
+    AnotherReady.ReBase(1);
   end;
 
   // AnotherReadyの次元をSelfReadyにあわせて拡張
@@ -1741,7 +1788,7 @@ begin
 
   // 元のベースインデックスに戻す
   if BaseIndex <> 1 then
-    Result.NormalizeToBaseIndex(BaseIndex);
+    Result.ReBase(BaseIndex);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
