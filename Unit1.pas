@@ -11,8 +11,10 @@ type
     Memo1: TMemo;
     Button1: TButton;
     Button2: TButton;
+    Button3: TButton;
     procedure Button1Click(Sender: TObject);
     procedure Button2Click(Sender: TObject);
+    procedure Button3Click(Sender: TObject);
   private
     { Private 宣言 }
   public
@@ -1620,6 +1622,193 @@ begin
     Memo1.Lines.Add(Format('行%d: %.1f', [i, ResultArray[i]]));
   }
 
+end;
+
+//procedure TForm1.Button3Click(Sender: TObject);
+//var
+//  TestArray, TestArray2: TFlexArray<Integer>;
+//  VectorArray: TArray<Integer>;
+//  i: Integer;
+//begin
+//  Memo1.Lines.Add('=== メソッドチェーンテスト ===');
+//
+//  // 1. CreateFromRangeで "1..12" の配列を宣言
+//  VectorArray := TFlexArray<Integer>.CreateFromRange('1..12')
+//    .Map(SequentialNumber).ToVector;;
+//
+//  Memo1.Lines.Add('1. 元の配列 (1..12):');
+//  Memo1.Lines.Add('   ' + TFlexArray<Integer>.ViewFromArray(VectorArray,1).ToString);
+//
+//  // 4. ViewFromArray.Map(シリアルナンバー).Reshapeを実行
+//  Memo1.Lines.Add('4. ViewFromArrayから新しい配列を作成:');
+//  TestArray := TFlexArray<Integer>.ViewFromArray(VectorArray, 1)
+//    .Reshape([3, 4], 1);
+//  TestArray[2,3] := 2300;
+//
+//  TestArray2 := TestArray.LogicalTranspose([2,1]).Map(SequentialNumber);
+//
+//  TestArray[2,3] := 1234;
+//
+//  Memo1.Lines.Add('A  ' + TestArray2.ToRangesString);
+//  Memo1.Lines.Add('B  ' + TestArray.ToRangesString);
+//  Memo1.Lines.Add('C  ' + TestArray2.ToString);
+//  Memo1.Lines.Add('D  ' + TestArray.ToString);
+//  Memo1.Lines.Add('1. 元の配列 (1..12):');
+//  Memo1.Lines.Add('   ' + TFlexArray<Integer>.ViewFromArray(VectorArray,1).ToString);
+//end;
+
+// --- SliceIndexed テスト ---
+procedure TestSliceIndexedBasic;
+var
+  Matrix, Result: TFlexArray<Integer>;
+  i, j: Integer;
+begin
+  Log('=== SliceIndexed 基本テスト ===');
+  
+  // 3x3行列を作成
+  Matrix := TFlexArray<Integer>.CreateFromRange('1..9').Map(SequentialNumber);
+  Matrix.Reshape([3,3],1);
+  Log('元の行列:');
+  for i := 1 to 3 do
+  begin
+    var Line := '';
+    for j := 1 to 3 do
+      Line := Line + Format('%d ', [Matrix.ItemAt[[i, j]]]);
+    Log(Line);
+  end;
+  
+  // 特定の行と列を抽出
+  Result := Matrix.SliceIndexed([[1, 3], [2]]);
+  Log(Format('行[1,3], 列[2] -> 形状: %s',[Result.ToRangesString]));
+
+  // 結果を表示
+  Log('結果:');
+  Log(Result.ToString);
+
+  Log('=== 基本テスト完了 ===');
+  Log('');
+end;
+
+procedure TestSliceIndexedEmptyExpansion;
+var
+  Matrix, Result: TFlexArray<Integer>;
+begin
+  Log('=== SliceIndexed 空配列展開テスト ===');
+  
+  // 3x3行列を作成
+  Matrix := TFlexArray<Integer>.CreateFromRange('1..9').Map(SequentialNumber);
+  Matrix.Reshape([3,3],1);
+  
+  // 全行、特定列を抽出
+  Result := Matrix.SliceIndexed([[], [2]]);
+  Log(Format('全行, 列[2] -> 形状: %s', [Result.ToRangesString]));
+  
+  // 結果を表示
+  Log('結果:');
+  Log(Result.ToString);
+  
+  Log('=== 空配列展開テスト完了 ===');
+  Log('');
+end;
+
+procedure TestSliceIndexedDimensionCompression;
+var
+  Matrix, Result: TFlexArray<Integer>;
+begin
+  Log('=== SliceIndexed 次元圧縮テスト ===');
+  
+  // 3x3行列を作成
+  Matrix := TFlexArray<Integer>.CreateFromRange('1..9').Map(SequentialNumber);
+  Matrix.Reshape([3,3],1);
+  
+  // 単一行を抽出（次元圧縮されるはず）
+  Result := Matrix.SliceIndexed([[2], []]);
+  Log(Format('行[2], 全列 -> 形状: %s', [Result.ToRangesString]));
+  
+  // 結果を表示
+  Log('結果:');
+  Log(Result.ToString);
+  
+  Log('=== 次元圧縮テスト完了 ===');
+  Log('');
+end;
+
+procedure TestSliceIndexedComplex;
+var
+  Tensor, Result: TFlexArray<Integer>;
+begin
+  Log('=== SliceIndexed 複雑テスト ===');
+  
+  // 3x3x2テンソルを作成
+  Tensor := TFlexArray<Integer>.CreateFromRange('1..18').Map(SequentialNumber);
+  Tensor.Reshape([3,3,2],1);
+  Log(Tensor.ToString);
+
+  // 複雑なスライス
+  Result := Tensor.SliceIndexed([[1, 3], [2, 3], [1]]);
+  Log(Format('行[1,3], 列[2,3], 層[1] -> 形状: %s', [Result.ToRangesString]));
+
+  // 結果を表示
+  Log('結果:');
+  Log(Result.ToString);
+  
+  Log('=== 複雑テスト完了 ===');
+  Log('');
+end;
+
+procedure TestSliceIndexedErrorCases;
+var
+  Matrix: TFlexArray<Integer>;
+  Result: TFlexArray<Integer>;
+begin
+  Log('=== SliceIndexed エラーテスト ===');
+  
+  // 3x3行列を作成
+  Matrix := TFlexArray<Integer>.CreateFromRange('1..9').Map(SequentialNumber);
+  Matrix.Reshape([3,3],1);
+  
+  try
+    // 範囲外のインデックス
+    Result := Matrix.SliceIndexed([[4], []]);
+    Log('エラー: 範囲外インデックスで例外が発生すべきでした');
+  except
+    on E: Exception do
+      Log('OK: 範囲外インデックスで例外発生: ' + E.Message);
+  end;
+  
+  try
+    // 次元数不一致
+    Result := Matrix.SliceIndexed([[1, 3]]);
+    Log('エラー: 次元数不一致で例外が発生すべきでした');
+  except
+    on E: Exception do
+      Log('OK: 次元数不一致で例外発生: ' + E.Message);
+  end;
+  
+  Log('=== エラーテスト完了 ===');
+  Log('');
+end;
+
+procedure TForm1.Button3Click(Sender: TObject);
+begin
+  Memo1.Lines.Clear;
+  Log('=== SliceIndexed 全テスト開始 ===');
+  
+//  try
+    TestSliceIndexedBasic;
+    TestSliceIndexedEmptyExpansion;
+    TestSliceIndexedDimensionCompression;
+    TestSliceIndexedComplex;
+//    TestSliceIndexedErrorCases;
+
+    Log('=== すべてのテストが正常に完了しました ===');
+//  except
+//    on E: Exception do
+//    begin
+//      Log('テスト中にエラーが発生: ' + E.Message);
+//      Log('スタックトレース: ' + E.StackTrace);
+//    end;
+//  end;
 end;
 
 end.

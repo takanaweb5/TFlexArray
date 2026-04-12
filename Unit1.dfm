@@ -37,4 +37,22 @@ object Form1: TForm1
     OnClick = Button1Click
     ExplicitTop = 496
   end
+  object Button2: TButton
+    Left = 136
+    Top = 504
+    Width = 75
+    Height = 25
+    Caption = 'Button2'
+    TabOrder = 2
+    OnClick = Button2Click
+  end
+  object Button3: TButton
+    Left = 240
+    Top = 501
+    Width = 75
+    Height = 25
+    Caption = 'Button3'
+    TabOrder = 3
+    OnClick = Button3Click
+  end
 end
