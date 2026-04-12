@@ -53,7 +53,6 @@ type
     function MoveNext: Boolean;
   end;
 
-
   // Map用コールバック関数サンプル(連番作成)
   function SequentialNumber(const Value: Integer; const Coords: TCoords): Integer;
 
@@ -164,7 +163,7 @@ type
     function SliceDimIndexes(Dim: Integer; const Indexes: TArray<Integer>): TFlexArray<T>; overload;
     function SliceDimIndexes(Dim: Integer; const Indexes: TArray<Integer>; BaseIndex: Integer): TFlexArray<T>; overload;
     function Slice(Ranges: TFlexRanges): TFlexArray<T>; overload;
-    function SliceIndexed(const Indexes: TArray<TSliceIndexes>): TFlexArray<T>;
+    function SliceIndexed(const Indexes: TArray<TSliceIndexes>; BaseIndex: Integer = 0): TFlexArray<T>;
 
     // 2D配列の行・列挿入
     function InsertRow(RowIndex: Integer; const Another: TFlexArray<T>): TFlexArray<T>; overload;
@@ -187,6 +186,7 @@ type
     procedure ResetTranspose;
     property IsLogicalTransposed: Boolean read FIsLogicalTransposed;
 
+    function ArgSort(const SortDim: Integer; const KeyCoord: TCoords): TArray<Integer>;
     function Concat(const Another: TFlexArray<T>; TargetDim: Integer): TFlexArray<T>;  // nD
     function HStack(const Another: TFlexArray<T>): TFlexArray<T>;  // 2D
     function VStack(const Another: TFlexArray<T>): TFlexArray<T>;  // 2D
@@ -1201,6 +1201,7 @@ end;
 // [戻値] 切取り後の配列
 // [使用例] NewArr := arr.Slice([[1, 5], [2, 8], [], [3]]);
 //         NumPyの arr[1:5, 2:8, :, 3] に相当
+//         Juliaの arr[1:5, 2:8, :, 3] に相当
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.Slice(Ranges: TFlexRanges): TFlexArray<T>;
 var
@@ -1254,11 +1255,13 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] すべての次元でインデックス配列を指定して要素を抽出
 // [引数] Indexes - 各次元のインデックス配列（空配列は全範囲指定）
+//       BaseIndex - ベースインデックス
 // [戻値] 抽出された配列
 // [使用例] result := arr.SliceIndexed([[1,2,3], [], [4,5]])
-//         Juliaの A[[1,2,3], :, [4,5]] に相当
+//         NumPyの arr[np.ix_([1,2,3], :, [4,5])] に相当（直積を抽出）
+//         Juliaの arr[[1,2,3], :, [4,5]] に相当
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.SliceIndexed(const Indexes: TArray<TSliceIndexes>): TFlexArray<T>;
+function TFlexArray<T>.SliceIndexed(const Indexes: TArray<TSliceIndexes>; BaseIndex: Integer = 0): TFlexArray<T>;
 var
   i, j: Integer;
   DimIndexes: TSliceIndexes;
@@ -1287,13 +1290,13 @@ begin
     end;
   end;
 
-  Result := SliceIndexedCore(Indexes, Self.FDims.Items[1].Low);
+  Result := SliceIndexedCore(Indexes, BaseIndex);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] TSliceIndexesからスライス範囲を構築してResult配列を作成し、Selfから要素をコピーするコア関数
 // [引数] Indexes - 各次元のインデックス配列
-//       Base - インデックスのベース
+//       BaseIndex - ベースインデックス
 // [戻値] スライスされた配列
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.SliceIndexedCore(const Indexes: TArray<TSliceIndexes>; BaseIndex: Integer = 0): TFlexArray<T>;
@@ -1853,8 +1856,24 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
+// [概要] 指定次元をソートするためのインデックス配列を返す
+// [引数] SortDim: ソートする次元(1-based), KeyCoord: キーにする座標(SortDim以外の次元)
+// [戻値] ソート後のインデックス配列
+// [使用例]
+//   3次元配列で2次元目をソート（キーは座標[1,3]の要素）
+//   SortIndices := ArgSort(2, [1, 3]);
+//   SortedArray := SliceDimIndexes(2, SortIndices);
+//         NumPyの np.argsort(arr[1, :, 3], axis=1) に相当
+// [備考] KeyCoordの長さはDimensionCount-1である必要がある
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.ArgSort(const SortDim: Integer; const KeyCoord: TCoords): TArray<Integer>;
+begin
+//
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
 // [概要] 指定次元で配列を結合
-// [引数] 結合対象の配列, 結合する次元
+// [引数] 結合対象の配列, 結合する次元(1-based)
 // [戻値] 結合結果の配列
 // [備考] 次元数の差が1以内の場合は自動的に次元を昇格させて結合
 //////////////////////////////////////////////////////////////////////////////////////
