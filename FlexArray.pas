@@ -18,6 +18,8 @@ type
   end;
   TFlexRanges = TArray<TFlexRange>;  // [[Low1, High1], [Low2, High2], ...]
 
+  TSliceIndexes = array of Integer;  // スライス用インデックス配列
+
   TCoords = array of Integer;  // 座標配列 [x, y, z, ...]
   TCoordsHelper = record helper for TCoords
   public
@@ -105,6 +107,7 @@ type
     function SliceDimIndexesCore(Dim: Integer; const Indexes: TArray<Integer>): TFlexArray<T>; overload;
     function SliceDimIndexesCore(Dim: Integer; const Indexes: TArray<Integer>; const Another: TFlexArray<T>; Index: Integer): TFlexArray<T>; overload;
     function SliceCore(const Ranges: TFlexRanges): TFlexArray<T>;
+    function SliceIndexedCore(const Indexes: TArray<TSliceIndexes>; BaseIndex: Integer = 0): TFlexArray<T>;
     function GetEnumerator: TFlexArrayEnumerator<T>;
 
   public
@@ -135,7 +138,7 @@ type
     property DimensionCount: Integer read GetDimensionCount;
     property TotalSize: Integer read FTotalSize;
 
-    procedure Reshape(const Shapes: array of Integer; BaseIndex: Integer);
+    function Reshape(const Shapes: array of Integer; BaseIndex: Integer): TFlexArray<T>;
     procedure ReshapeVector(BaseIndex: Integer); // 1D
     procedure ReshapeRange(const Range: TFlexRange); overload; // 1D
     procedure ReshapeRange(const Ranges: TFlexRanges); overload; // nD
@@ -161,6 +164,7 @@ type
     function SliceDimIndexes(Dim: Integer; const Indexes: TArray<Integer>): TFlexArray<T>; overload;
     function SliceDimIndexes(Dim: Integer; const Indexes: TArray<Integer>; BaseIndex: Integer): TFlexArray<T>; overload;
     function Slice(Ranges: TFlexRanges): TFlexArray<T>; overload;
+    function SliceIndexed(const Indexes: TArray<TSliceIndexes>): TFlexArray<T>;
 
     // 2D配列の行・列挿入
     function InsertRow(RowIndex: Integer; const Another: TFlexArray<T>): TFlexArray<T>; overload;
@@ -179,7 +183,7 @@ type
     function Transpose(Dim1, Dim2: Integer): TFlexArray<T>; overload; // nD
     function Transpose(const NewDims: array of Integer): TFlexArray<T>; overload; // nD
     function Transpose(): TFlexArray<T>; overload; // 2D
-    procedure LogicalTranspose(const NewDims: array of Integer);
+    function LogicalTranspose(const NewDims: array of Integer): TFlexArray<T>;
     procedure ResetTranspose;
     property IsLogicalTransposed: Boolean read FIsLogicalTransposed;
 
@@ -203,7 +207,7 @@ type
     function DeleteDim(Dim: Integer; const Range: TFlexRange): TFlexArray<T>;
 
     // Swiftスタイル: 非破壊的(-ed) / 破壊的(原形)
-    procedure Map(const AFunc: TMapFunc<T>); overload;
+    function Map(const AFunc: TMapFunc<T>): TFlexArray<T>; overload;
     function Mapped<TResult>(const AFunc: TMappedFunc<T, TResult>): TFlexArray<TResult>; overload;
 
     function Filter(const AFunc: TFilterFunc<T>): TArray<T>; overload;
@@ -524,13 +528,14 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 配列の形状を変更し、データを保持したまま次元構造を再定義
 // [引数] 各次元の形状配列, 開始インデックス
-// [戻値] なし
+// [戻値] self(メソッドチェーン用)
 // [使用例] Matrix.Reshape([3, 2], 1)  // 1始まりの3x2行列に再定義
 // [備考] 変更前後の全要素数が一致する必要あり
 //////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.Reshape(const Shapes: array of Integer; BaseIndex: Integer);
+function TFlexArray<T>.Reshape(const Shapes: array of Integer; BaseIndex: Integer): TFlexArray<T>;
 begin
   ReshapeRange(ShapesToRanges(Shapes, BaseIndex));
+  Exit(Self);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1247,6 +1252,110 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
+// [概要] すべての次元でインデックス配列を指定して要素を抽出
+// [引数] Indexes - 各次元のインデックス配列（空配列は全範囲指定）
+// [戻値] 抽出された配列
+// [使用例] result := arr.SliceIndexed([[1,2,3], [], [4,5]])
+//         Juliaの A[[1,2,3], :, [4,5]] に相当
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.SliceIndexed(const Indexes: TArray<TSliceIndexes>): TFlexArray<T>;
+var
+  i, j: Integer;
+  DimIndexes: TSliceIndexes;
+  TargetDim: TFlexDimension;
+  Index: Integer;
+begin
+  // 入力チェック
+  if System.Length(Indexes) <> Self.DimensionCount then
+    raise Exception.CreateFmt('SliceIndexed: 指定された次元数(%d)が配列の次元数(%d)と一致しません',
+      [System.Length(Indexes), Self.DimensionCount]);
+
+  // インデックス範囲チェック
+  for i := 1 to Self.DimensionCount do
+  begin
+    DimIndexes := Indexes[i - 1];
+    TargetDim := Self.FDims.Items[i];
+
+    if System.Length(DimIndexes) = 0 then
+      Continue; // [] は全範囲指定なのでチェックしない
+
+    for Index in DimIndexes do
+    begin
+      if (TargetDim.Low > Index) or (Index > TargetDim.High) then
+        raise Exception.CreateFmt('SliceIndexed: 第%d次元のインデックス%dが範囲外です[%d..%d]',
+          [i, Index, TargetDim.Low, TargetDim.High]);
+    end;
+  end;
+
+  Result := SliceIndexedCore(Indexes, Self.FDims.Items[1].Low);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] TSliceIndexesからスライス範囲を構築してResult配列を作成し、Selfから要素をコピーするコア関数
+// [引数] Indexes - 各次元のインデックス配列
+//       Base - インデックスのベース
+// [戻値] スライスされた配列
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.SliceIndexedCore(const Indexes: TArray<TSliceIndexes>; BaseIndex: Integer = 0): TFlexArray<T>;
+var
+  i, d: Integer;
+  ResultCoords, SelfCoords: TCoords;
+  NewRanges: TFlexRanges;
+  TargetDim: TFlexDimension;
+  MappedIndexes: TArray<TSliceIndexes>;
+begin
+  SetLength(NewRanges, Self.DimensionCount);
+
+  // IndexesからNewRangesを構築
+  for i := 0 to System.High(Indexes) do
+  begin
+    TargetDim := Self.FDims.Items[i + 1];
+    if System.Length(Indexes[i]) = 0 then
+      NewRanges[i] := [0, TargetDim.Len - 1]  // [] は全範囲、Low=0で統一
+    else
+      NewRanges[i] := [0, System.Length(Indexes[i]) - 1];
+  end;
+
+  // []をLow..Highに展開
+  MappedIndexes := Copy(Indexes);
+  for i := 0 to System.High(Indexes) do
+  begin
+    TargetDim := Self.FDims.Items[i + 1];
+    if System.Length(Indexes[i]) = 0 then
+    begin
+      // []の場合はLow..Highに展開
+      SetLength(MappedIndexes[i], TargetDim.Len);
+      for d := 0 to TargetDim.Len - 1 do
+        MappedIndexes[i][d] := TargetDim.Low + d;
+    end;
+  end;
+
+  Result := TFlexArray<T>.CreateFromRange(NewRanges);
+  Result.InitializeCoords(ResultCoords);
+  SetLength(SelfCoords, Self.DimensionCount);
+
+  // Resultの座標イテレーションで、Selfから対応する要素を取得
+  for i := 0 to Result.FTotalSize - 1 do
+  begin
+    // 引数のIndexesをSelfの座標に変換
+    for d := 0 to System.High(ResultCoords) do
+      SelfCoords[d] := MappedIndexes[d][ResultCoords[d]];
+
+    Result.FData[i] := Self.ItemAt[SelfCoords];
+    Result.IncCoords(ResultCoords);
+  end;
+
+  // 要素数1の次元を後方からDemoteDimensionで処理
+  for i := System.High(Indexes) downto 0 do
+  begin
+    if System.Length(Indexes[i]) = 1 then
+      Result.DemoteDimension(i + 1);  // 1次元ずつつぶす
+  end;
+
+  Result.Rebase(BaseIndex);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
 // [概要] スライス範囲からResult配列を作成し、Selfから要素をコピーするコア関数
 // [引数] Ranges - スライス範囲を表現する次元情報
 // [戻値] スライスされた配列
@@ -1595,10 +1704,10 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 論理転置を実行する（データ移動なし）
 // [引数] NewDims: 新しい次元順序 [論理1次元→物理X次元, 論理2次元→物理Y次元, ...]
-// [戻値] なし
+// [戻値] self(メソッドチェーン用)
 // [使用例] LogicalTranspose([3, 1, 2])  // 論理1→物理3, 論理2→物理1, 論理3→物理2
 //////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.LogicalTranspose(const NewDims: array of Integer);
+function TFlexArray<T>.LogicalTranspose(const NewDims: array of Integer): TFlexArray<T>;
 var
   i: Integer;
 begin
@@ -1616,6 +1725,7 @@ begin
     if NewDims[i] - 1 <> i then
       FIsLogicalTransposed := True;
   end;
+  Exit(Self);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -2074,13 +2184,13 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 配列の各要素を直接変更する（破壊的）
 // [引数] 変換関数（値と座標を引数に取り、新しい値を返す）
-// [戻値] なし
+// [戻値] self(メソッドチェーン用)
 // [使用例]   A.Map(function(const Value: Integer; const Coords: TCoords): Integer
 //               begin
 //                 Result := Coords[0] * 1000 + Coords[1];
 //               end);
 //////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.Map(const AFunc: TMapFunc<T>);
+function TFlexArray<T>.Map(const AFunc: TMapFunc<T>): TFlexArray<T>;
 var
   i: Integer;
   CurrentCoords: TCoords;
@@ -2092,6 +2202,7 @@ begin
     Self.Elements[i] := AFunc(Self.Elements[i], CurrentCoords);
     Self.IncCoords(CurrentCoords);
   end;
+  Exit(Self);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
