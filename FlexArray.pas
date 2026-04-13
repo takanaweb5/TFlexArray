@@ -186,7 +186,7 @@ type
     procedure ResetTranspose;
     property IsLogicalTransposed: Boolean read FIsLogicalTransposed;
 
-    function ArgSort(const SortDim: Integer; const KeyCoord: TCoords): TArray<Integer>;
+    function ArgSort(Ascending: Boolean = True): TArray<Integer>;
     function Concat(const Another: TFlexArray<T>; TargetDim: Integer): TFlexArray<T>;  // nD
     function HStack(const Another: TFlexArray<T>): TFlexArray<T>;  // 2D
     function VStack(const Another: TFlexArray<T>): TFlexArray<T>;  // 2D
@@ -1856,19 +1856,45 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
-// [概要] 指定次元をソートするためのインデックス配列を返す
-// [引数] SortDim: ソートする次元(1-based), KeyCoord: キーにする座標(SortDim以外の次元)
+// [概要] 1次元配列の要素をソートするためのインデックス配列を返す
+// [引数] Ascending: True=昇順, False=降順 (デフォルト=True)
 // [戻値] ソート後のインデックス配列
 // [使用例]
-//   3次元配列で2次元目をソート（キーは座標[1,3]の要素）
-//   SortIndices := ArgSort(2, [1, 3]);
-//   SortedArray := SliceDimIndexes(2, SortIndices);
-//         NumPyの np.argsort(arr[1, :, 3], axis=1) に相当
-// [備考] KeyCoordの長さはDimensionCount-1である必要がある
+// matrix (Before) : [[3,2,1], [6,5,4]]
+// Vector := matrix.Slice([2, []]); // 2行目の要素を抽出 結果: [6,5,4]
+// SortIndices := Vector.ArgSort;   // 結果: [2,1,0]
+// matrix := matrix.SliceDimIndexes(2, SortIndices); // 列をソート 結果: [[1,2,3], [4,5,6]]
+// NumPyの np.argsort(matrix[1, :]) に相当
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.ArgSort(const SortDim: Integer; const KeyCoord: TCoords): TArray<Integer>;
+function TFlexArray<T>.ArgSort(Ascending: Boolean = True): TArray<Integer>;
+var
+  i: Integer;
+  Indices: TArray<Integer>;
+  Comparer: IComparer<Integer>;
+  LSelf: TFlexArray<T>; // FDataを直接参照するためのローカル変数
 begin
-//
+  // 1次元配列専用チェック
+  CheckDimension(1);
+  LSelf := Self; // 内部配列をキャプチャ
+
+  // インデックス配列を初期化
+  SetLength(Indices, FTotalSize);
+  for i := Self.Low to Self.High do
+    Indices[i - Self.Low] := i;
+
+  // カスタム比較子を作成してインデックスをソート
+  Comparer := TComparer<Integer>.Construct(
+    function(const L, R: Integer): Integer
+    begin
+      if Ascending then
+        Result := TComparer<T>.Default.Compare(LSelf[L], LSelf[R])
+      else
+        Result := TComparer<T>.Default.Compare(LSelf[R], LSelf[L]);
+    end
+  );
+
+  TArray.Sort<Integer>(Indices, Comparer);
+  Result := Indices;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
