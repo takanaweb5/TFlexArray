@@ -62,10 +62,12 @@ type
     TCoordsIterator = class
     private
       FData: Pointer;
+      FRanges: TFlexRanges;
       FCoords: TCoords;
       function GetCurrent: TCoords;
+      function IncCoords(var Coords: TCoords): Boolean;
     public
-      constructor Create(const Parent: Pointer);
+      constructor Create(const Parent: Pointer; Ranges: TFlexRanges);
       function MoveNext: Boolean;
       property Current: TCoords read GetCurrent;
       function GetEnumerator: TCoordsIterator;
@@ -207,6 +209,7 @@ type
     function DeleteDim(Dim: Integer; const Range: TFlexRange): TFlexArray<T>;
 
     // Swiftスタイル: 非破壊的(-ed) / 破壊的(原形)
+    procedure Fill(Value: T);
     function Map(const AFunc: TMapFunc<T>): TFlexArray<T>; overload;
     function Mapped<TResult>(const AFunc: TMappedFunc<T, TResult>): TFlexArray<TResult>; overload;
 
@@ -221,7 +224,7 @@ type
     function IndexOfCoords(const Value: T): TCoords;
 
     // 座標イテレータ - for Coords in FlexArray.CoordsIterator do
-    function CoordsIterator: TCoordsIterator;
+    function CoordsIterator(Ranges: TFlexRanges = nil): TCoordsIterator;
   end;
 
 implementation
@@ -345,11 +348,65 @@ end;
 // [引数] 親配列のポインタ
 // [戻値] なし
 //////////////////////////////////////////////////////////////////////////////////////
-constructor TFlexArray<T>.TCoordsIterator.Create(const Parent: Pointer);
+constructor TFlexArray<T>.TCoordsIterator.Create(const Parent: Pointer; Ranges: TFlexRanges);
+var
+  i: Integer;
+  ParentArray: TFlexArray<T>;
+  TargetDim: TFlexDimension;
 begin
   inherited Create;
   FData := Parent;
-  TFlexArray<T>(FData^).InitializeCoords(FCoords);
+  ParentArray := TFlexArray<T>(Parent^);
+
+  FRanges := Copy(ParentArray.GetRanges);
+  if Ranges <> nil then
+  begin
+    // 次元数チェック
+    if System.Length(Ranges) <> ParentArray.DimensionCount then
+      raise Exception.CreateFmt('CoordsIterator: 次元数が一致しません。配列=%d, 指定=%d',
+        [ParentArray.DimensionCount, System.Length(Ranges)]);
+
+    for i := 0 to System.High(Ranges) do
+    begin
+      TargetDim := ParentArray.FDims.Items[i + 1];
+
+      case System.Length(Ranges[i]) of
+        0: ; // [] 全部
+        1:   // [L]
+        begin
+          if (Ranges[i].Low < TargetDim.Low) or (Ranges[i].Low > TargetDim.High) then
+            raise Exception.CreateFmt('CoordsIterator: 第%d次元の範囲が配列の範囲外です (指定=%d, 配列=%d..%d)',
+              [i + 1, Ranges[i].Low, TargetDim.Low, TargetDim.High]);
+        end;
+        2:   // [L, H]
+        begin
+          if (Ranges[i].Low < TargetDim.Low) or (Ranges[i].High > TargetDim.High) then
+            raise Exception.CreateFmt('CoordsIterator: 第%d次元の範囲が配列の範囲外です (指定=%d..%d, 配列=%d..%d)',
+              [i + 1, Ranges[i].Low, Ranges[i].High, TargetDim.Low, TargetDim.High]);
+          if Ranges[i].Low > Ranges[i].High then
+            raise Exception.CreateFmt('CoordsIterator: 第%d次元の範囲が不正です (Low:%d > High:%d)',
+              [i + 1, Ranges[i].Low, Ranges[i].High]);
+        end;
+      else
+        raise Exception.CreateFmt('CoordsIterator: 第%d次元の指定が不正です（要素数=%d）', [i + 1, System.Length(Ranges[i])]);
+      end;
+    end;
+
+    for i := 0 to System.High(Ranges) do
+    begin
+      case System.Length(Ranges[i]) of
+        1: FRanges[i] := [Ranges[i].Low, Ranges[i].Low];
+        2: FRanges[i] := [Ranges[i].Low, Ranges[i].High];
+      end;
+    end;
+  end;
+
+  SetLength(FCoords, ParentArray.DimensionCount);
+  for i := 0 to System.Length(FCoords) - 1 do
+    FCoords[i] := FRanges[i].Low;
+
+  // MoveNextが最初に呼ばれる前に1つ戻す（for..in の仕様に合わせる）
+  FCoords[System.High(FCoords)] := FRanges[System.High(FCoords)].Low - 1;
 end;
 
 /////////////////////////////////////////////////////////////////////////////////////
@@ -362,12 +419,42 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
+// [概要] FRangesの範囲内で座標をインクリメントする
+// [引数] Coords: 現在の座標配列
+// [戻値] 1周した（終了）場合はTrue、まだ続く場合はFalse
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.TCoordsIterator.IncCoords(var Coords: TCoords): Boolean;
+var
+  d: Integer;
+begin
+  // 一番右側の次元（最小単位）から順にチェック
+  for d := System.High(Coords) downto 0 do
+  begin
+    Inc(Coords[d]);
+
+    // 上限を超えていないなら終了
+    if Coords[d] <= FRanges[d].High then
+    begin
+      Result := False;  // 1周していない
+      Exit;
+    end;
+
+    // 上限を超えたので、現在の次元を最小値(Low)にリセットし、
+    // ループを継続して一つ左の次元（上位桁）を Inc する
+    Coords[d] := FRanges[d].Low;
+  end;
+
+  // すべての次元がリセットされた＝1周した
+  Result := True;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
 // [概要] 次の座標に移動
 // [戻値] 次の座標が存在する場合はTrue、終了時はFalse
 //////////////////////////////////////////////////////////////////////////////////////
 function  TFlexArray<T>.TCoordsIterator.MoveNext: Boolean;
 begin
-  Result := not TFlexArray<T>(FData^).IncCoords(FCoords);
+  Result := not IncCoords(FCoords);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1110,14 +1197,19 @@ end;
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 座標列挙子を取得
-// [引数] なし
+// [引数] Ranges: 走査する範囲（Slice関数と同じ指定方法。省略時は配列全体）
+//        [] → 全範囲, [L] → Low のみ, [L, H] → Low..High
 // [戻値] TCoordsIterator オブジェクト
-// [使用例] for Coords in FlexArray.CoordsIterator do ...
+// [使用例] for Coords in N.CoordsIterator do
+//            N.ItemAt[Coords] := Coords[0] * 10 + Coords[1];
+//          for Coords in N.CoordsIterator([[1, 2], [1, 3]]) do  // 部分範囲
+//            N.ItemAt[Coords] := Coords[0] * 10 + Coords[1];
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.CoordsIterator: TFlexArray<T>.TCoordsIterator;
+function TFlexArray<T>.CoordsIterator(Ranges: TFlexRanges = nil): TCoordsIterator;
 begin
-  Result := TCoordsIterator.Create(@Self);
+  Result := TCoordsIterator.Create(@Self, Ranges);
 end;
+
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 座標を初期化
@@ -2224,6 +2316,19 @@ begin
     ResultCoords[DimIdx] := bak;
     Result.IncCoords(ResultCoords);
   end;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 配列のすべての要素を指定した値で埋める
+// [引数] Value: 埋める値
+// [戻値] なし
+//////////////////////////////////////////////////////////////////////////////////////
+procedure TFlexArray<T>.Fill(Value: T);
+var
+  i: Integer;
+begin
+  for i := 0 to FTotalSize - 1 do
+    FData[i] := Value;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
