@@ -29,17 +29,16 @@ type
     function Low:  Integer; inline;
     function High: Integer; inline;
     function Len:  Integer; inline;
-    procedure Check(AllowSingle: Boolean = False);
+    procedure Check(AllowAny: Boolean = False);
   end;
   TFlexRanges = TArray<TFlexRange>;  // [[Low1, High1], [Low2, High2], ...]
   TFlexRangesHelper = record helper for TFlexRanges
-    procedure Check(); overload;
     procedure Check(const Dims: TFlexDimensions); overload;
   end;
 
   TSliceIndexes = array of Integer;  // スライス用インデックス配列
-  TSliceIndexesArrayHelper = record helper for TArray<TSliceIndexes>
-    procedure Check(const Dims: TFlexDimensions);
+  TSliceIndexesHelper = record helper for TSliceIndexes
+    procedure Check(const Dim: TFlexDimension);
   end;
 
   TCoords = array of Integer;  // 座標配列 [x, y, z, ...]
@@ -113,8 +112,8 @@ type
     function RangesStringToRanges(const RangeStr: string): TFlexRanges;
     function ShapesToRanges(const Shapes: array of Integer; BaseIndex: Integer): TFlexRanges;
     function TransposeCore(const NewDims: array of Integer): TFlexArray<T>;
-    function SliceDimIndexesCore(Dim: Integer; const Indexes: TArray<Integer>): TFlexArray<T>; overload;
-    function SliceDimIndexesCore(Dim: Integer; const Indexes: TArray<Integer>; const Another: TFlexArray<T>; Index: Integer): TFlexArray<T>; overload;
+    function SliceDimIndexesCore(Dim: Integer; const Indexes: TSliceIndexes): TFlexArray<T>; overload;
+    function SliceDimIndexesCore(Dim: Integer; const Indexes: TSliceIndexes; const Another: TFlexArray<T>; Index: Integer): TFlexArray<T>; overload;
     function SliceCore(const Ranges: TFlexRanges): TFlexArray<T>;
     function SliceIndexedCore(const Indexes: TArray<TSliceIndexes>; BaseIndex: Integer = 0): TFlexArray<T>;
     function GetEnumerator: TFlexArrayEnumerator<T>;
@@ -165,12 +164,12 @@ type
     function SliceDimRange(Dim: Integer; const Range: TFlexRange): TFlexArray<T>; overload;  // nD
     function SliceRow(RowIndex: Integer): TFlexArray<T>;  // 2D
     function SliceCol(ColIndex: Integer): TFlexArray<T>;  // 2D
-    function SliceRows(const RowIndexes: TArray<Integer>): TFlexArray<T>;  // 2D
-    function SliceCols(const ColIndexes: TArray<Integer>): TFlexArray<T>;  // 2D
+    function SliceRows(const RowIndexes: TSliceIndexes): TFlexArray<T>;  // 2D
+    function SliceCols(const ColIndexes: TSliceIndexes): TFlexArray<T>;  // 2D
     function SliceRowRange(const Range: TFlexRange): TFlexArray<T>;  // 2D
     function SliceColRange(const Range: TFlexRange): TFlexArray<T>;  // 2D
-    function SliceDimIndexes(Dim: Integer; const Indexes: TArray<Integer>): TFlexArray<T>; overload;
-    function SliceDimIndexes(Dim: Integer; const Indexes: TArray<Integer>; BaseIndex: Integer): TFlexArray<T>; overload;
+    function SliceDimIndexes(Dim: Integer; const Indexes: TSliceIndexes): TFlexArray<T>; overload;
+    function SliceDimIndexes(Dim: Integer; const Indexes: TSliceIndexes; BaseIndex: Integer): TFlexArray<T>; overload;
     function Slice(Ranges: TFlexRanges): TFlexArray<T>; overload;
     function SliceIndexed(const Indexes: TArray<TSliceIndexes>; BaseIndex: Integer = 0): TFlexArray<T>;
 
@@ -269,13 +268,13 @@ end;
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] TFlexRangeの妥当性チェック
-// [引数] AllowSingle: True=1要素(単一インデックス)も許可, False=2要素のみ許可(デフォルト)
+// [引数] AllowAny: True=[], [L], [L,H]を許可, False=[L,H]のみ許可(デフォルト)
 // [戻値] なし
 // [備考] 不正な場合は例外を発生
 //////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexRangeHelper.Check(AllowSingle: Boolean = False);
+procedure TFlexRangeHelper.Check(AllowAny: Boolean = False);
 begin
-  if AllowSingle then
+  if AllowAny then
   begin
     if System.Length(Self) > 2 then
       raise Exception.CreateFmt('TFlexRange: 要素数が不正です。%d要素あります。', [System.Length(Self)]);
@@ -289,21 +288,6 @@ begin
   if System.Length(Self) = 2 then
     if Self.Low > Self.High then
       raise Exception.CreateFmt('TFlexRange: Low(%d) > High(%d) は不正です。', [Low, High]);
-end;
-
-{ TFlexRangesHelper }
-//////////////////////////////////////////////////////////////////////////////////////
-// [概要] TFlexRangesの妥当性チェック
-// [引数] なし
-// [戻値] なし
-// [備考] 不正な場合は例外を発生
-//////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexRangesHelper.Check();
-var
-  i: Integer;
-begin
-  for i := 0 to System.Length(Self) - 1 do
-    Self[i].Check(false);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -327,48 +311,35 @@ begin
     Range := Self[i];
     Range.Check(True);
 
-    if System.Length(Range) = 1 then
-    begin
-      // 単一インデックスがDimsの範囲内か検証
-      if (Range.Low < TargetDim.Low) or (Range.Low > TargetDim.High) then
-        raise Exception.CreateFmt('TFlexRanges: 第%d次元のインデックス%dが範囲外です。範囲=%d..%d',
-          [i + 1, Range.Low, TargetDim.Low, TargetDim.High]);
-    end
-    else
-    begin
-      // [Low, High]ペアがDimsの範囲内か検証
-      if (Range.Low < TargetDim.Low) or (Range.High > TargetDim.High) then
-        raise Exception.CreateFmt('TFlexRanges: 第%d次元の範囲[%d..%d]が配列範囲外です。範囲=%d..%d',
-          [i + 1, Range.Low, Range.High, TargetDim.Low, TargetDim.High]);
+    case System.Length(Range) of
+      0: ;  // [] 全範囲指定
+      1:    // [L]
+        if (Range.Low < TargetDim.Low) or (Range.Low > TargetDim.High) then
+          raise Exception.CreateFmt('TFlexRanges: 第%d次元のインデックス%dが範囲外です。範囲=%d..%d',
+            [i + 1, Range.Low, TargetDim.Low, TargetDim.High]);
+      2:    // [L, H]
+        if (Range.Low < TargetDim.Low) or (Range.High > TargetDim.High) then
+          raise Exception.CreateFmt('TFlexRanges: 第%d次元の範囲[%d..%d]が配列範囲外です。範囲=%d..%d',
+            [i + 1, Range.Low, Range.High, TargetDim.Low, TargetDim.High]);
     end;
   end;
 end;
 
-{ TSliceIndexesArrayHelper }
+{ TSliceIndexesHelper }
 //////////////////////////////////////////////////////////////////////////////////////
-// [概要] TSliceIndexesArrayの妥当性チェック（次元数＋全次元分）
-// [引数] Dims: 各次元のLow/High情報
+// [概要] TSliceIndexesの妥当性チェック
+// [引数] Dim: 対象次元のLow/High情報
 // [戻値] なし
-// [備考] 不正な場合は例外を発生。空配列は全範囲指定なのでスキップ
+// [備考] 不正な場合は例外を発生
 //////////////////////////////////////////////////////////////////////////////////////
-procedure TSliceIndexesArrayHelper.Check(const Dims: TFlexDimensions);
+procedure TSliceIndexesHelper.Check(const Dim: TFlexDimension);
 var
-  i: Integer;
   Index: Integer;
-  Dim: TFlexDimension;
 begin
-  if System.Length(Self) <> System.Length(Dims) then
-    raise Exception.CreateFmt('TSliceIndexesArray: 次元数が一致しません。Indexes=%d, Dims=%d',
-      [System.Length(Self), System.Length(Dims)]);
-
-  for i := 0 to System.High(Self) do
-  begin
-    Dim := Dims.Items[i + 1];
-    for Index in Self[i] do
-      if (Index < Dim.Low) or (Index > Dim.High) then
-        raise Exception.CreateFmt('TSliceIndexes: 第%d次元のインデックス%dが範囲外です。範囲=%d..%d',
-          [i + 1, Index, Dim.Low, Dim.High]);
-  end;
+  for Index in Self do
+    if (Index < Dim.Low) or (Index > Dim.High) then
+      raise Exception.CreateFmt('TSliceIndexes: インデックス%dが範囲外です。範囲=%d..%d',
+        [Index, Dim.Low, Dim.High]);
 end;
 
 { TCoordsHelper }
@@ -1362,8 +1333,6 @@ var
   i: Integer;
   SingleDimCount: Integer;
 begin
-  Ranges.Check(FDims);
-
   SingleDimCount := 0;
   for i := 0 to System.High(Ranges) do
     if System.Length(Ranges[i]) = 1 then
@@ -1386,7 +1355,9 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.SliceIndexed(const Indexes: TArray<TSliceIndexes>; BaseIndex: Integer = 0): TFlexArray<T>;
 begin
-  Indexes.Check(FDims);
+  if System.Length(Indexes) <> Self.DimensionCount then
+    raise Exception.CreateFmt('SliceIndexed: 指定された次元数(%d)が配列の次元数(%d)と一致しません',
+      [System.Length(Indexes), Self.DimensionCount]);
 
   Result := SliceIndexedCore(Indexes, BaseIndex);
 end;
@@ -1405,6 +1376,9 @@ var
   TargetDim: TFlexDimension;
   MappedIndexes: TArray<TSliceIndexes>;
 begin
+  for i := 0 to System.High(Indexes) do
+    Indexes[i].Check(FDims.Items[i + 1]);
+
   SetLength(NewRanges, Self.DimensionCount);
 
   // IndexesからNewRangesを構築
@@ -1468,6 +1442,8 @@ var
   NewRanges: TFlexRanges;
   TargetDim: TFlexDimension;
 begin
+  Ranges.Check(FDims);
+
   SetLength(NewRanges, Self.DimensionCount);
   for i := 0 to System.High(Ranges) do
   begin
@@ -1514,7 +1490,7 @@ end;
 // [戻値] 抽出後の新しい配列
 // [使用例] Matrix.SliceRows([1, 3, 5])  // 1,3,5行目を抽出
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.SliceRows(const RowIndexes: TArray<Integer>): TFlexArray<T>;
+function TFlexArray<T>.SliceRows(const RowIndexes: TSliceIndexes): TFlexArray<T>;
 begin
   CheckDimension(2);
   Result := SliceDimIndexes(1, RowIndexes);
@@ -1526,7 +1502,7 @@ end;
 // [戻値] 抽出後の新しい配列
 // [使用例] Matrix.SliceCols([2, 4, 6])  // 2,4,6列目を抽出
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.SliceCols(const ColIndexes: TArray<Integer>): TFlexArray<T>;
+function TFlexArray<T>.SliceCols(const ColIndexes: TSliceIndexes): TFlexArray<T>;
 begin
   CheckDimension(2);
   Result := SliceDimIndexes(2, ColIndexes);
@@ -2120,7 +2096,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.InsertDim(Dim: Integer; Index: Integer; const Items: TFlexArray<T>): TFlexArray<T>;
 var
-  Indexes: TArray<Integer>;
+  Indexes: TSliceIndexes;
   i: Integer;
 begin
   // パラメータ検証
@@ -2150,7 +2126,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.DeleteDim(Dim: Integer; const Range: TFlexRange): TFlexArray<T>;
 var
-  Indexes: TArray<Integer>;
+  Indexes: TSliceIndexes;
   i, d: Integer;
 begin
   // パラメータ検証
@@ -2189,7 +2165,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.SliceDimRange(Dim: Integer; const Range: TFlexRange): TFlexArray<T>;
 var
-  Indexes: TArray<Integer>;
+  Indexes: TSliceIndexes;
   i: Integer;
 begin
   // パラメータ検証
@@ -2215,11 +2191,11 @@ end;
 //   Result := Matrix.SliceDimIndexes(2, [1, 3, 5]);    // 1,3,5列目を抽出
 //   Result := Matrix.SliceDimIndexes(2, [1, 3, 5], 1); // 1,3,5列目を抽出
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.SliceDimIndexes(Dim: Integer; const Indexes: TArray<Integer>): TFlexArray<T>;
+function TFlexArray<T>.SliceDimIndexes(Dim: Integer; const Indexes: TSliceIndexes): TFlexArray<T>;
 begin
   Result := SliceDimIndexes(Dim, Indexes, Self.Low(Dim));
 end;
-function TFlexArray<T>.SliceDimIndexes(Dim: Integer; const Indexes: TArray<Integer>; BaseIndex: Integer): TFlexArray<T>;
+function TFlexArray<T>.SliceDimIndexes(Dim: Integer; const Indexes: TSliceIndexes; BaseIndex: Integer): TFlexArray<T>;
 var
   NewRanges: TFlexRanges;
 begin
@@ -2244,14 +2220,14 @@ end;
 //   Result := Matrix.SliceDimIndexesCore(2, [1, 3, 5]);           // 1,3,5列目を抽出
 //   Result := Matrix.SliceDimIndexesCore(1, [1, 2, 3], Another, 2); // 2行目からAnotherを挿入
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.SliceDimIndexesCore(Dim: Integer; const Indexes: TArray<Integer>): TFlexArray<T>;
+function TFlexArray<T>.SliceDimIndexesCore(Dim: Integer; const Indexes: TSliceIndexes): TFlexArray<T>;
 var
   dmy: TFlexArray<T>;
 begin
   dmy.FTotalSize := -1;  // マーカー値（抽出専用モード）
   Result := SliceDimIndexesCore(Dim, Indexes, dmy, 0);
 end;
-function TFlexArray<T>.SliceDimIndexesCore(Dim: Integer; const Indexes: TArray<Integer>;
+function TFlexArray<T>.SliceDimIndexesCore(Dim: Integer; const Indexes: TSliceIndexes;
   const Another: TFlexArray<T>; Index: Integer): TFlexArray<T>;
 var
   i, d: Integer;
@@ -2262,6 +2238,8 @@ var
   FlexIndexes, MappedIndexes: TFlexArray<Integer>;
   IsAnotherArea: TFlexArray<Boolean>;
 begin
+  Indexes.Check(FDims.Items[Dim]);
+
   // 論理次元のBaseIndexを取得
   TargetDimBaseIdx := Self.FDims.Items[Dim].Low;
   // 1-based to 0-based
@@ -2277,7 +2255,7 @@ begin
     NewRanges[DimIdx] := [TargetDimBaseIdx, TargetDimBaseIdx + Length(Indexes) - 1];
 
   // BaseIndexを対象次元のBaseIndexで統一する
-  FlexIndexes := TFlexArray<Integer>.CreateFromArray(Indexes, TargetDimBaseIdx);
+  FlexIndexes := TFlexArray<Integer>.CreateFromArray(TArray<Integer>(Indexes), TargetDimBaseIdx);
   IsAnotherArea := TFlexArray<Boolean>.CreateFromRange(NewRanges[DimIdx]); // デフォルトはFalse
   if Another.FTotalSize > 0 then
   begin
