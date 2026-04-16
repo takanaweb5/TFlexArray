@@ -10,22 +10,6 @@ uses
 
 type
 
-  TFlexRange = TArray<Integer>;  // [Low, High] のペア
-  TFlexRangeHelper = record helper for TFlexRange
-    function Low:  Integer; inline;
-    function High: Integer; inline;
-    function Len:  Integer; inline;
-  end;
-  TFlexRanges = TArray<TFlexRange>;  // [[Low1, High1], [Low2, High2], ...]
-
-  TSliceIndexes = array of Integer;  // スライス用インデックス配列
-
-  TCoords = array of Integer;  // 座標配列 [x, y, z, ...]
-  TCoordsHelper = record helper for TCoords
-  public
-    class function FromArray(const Coords: array of Integer): TCoords; static;
-  end;
-
   TFlexDimension = record
     Low, High, Stride: Integer;
     RealIndex: Integer;
@@ -38,6 +22,30 @@ type
     procedure SetDimension(Index: Integer; const Value: TFlexDimension); inline;
   public
     property Items[Index: Integer]: TFlexDimension read GetDimension write SetDimension;
+  end;
+
+  TFlexRange = TArray<Integer>;  // [Low, High] のペア
+  TFlexRangeHelper = record helper for TFlexRange
+    function Low:  Integer; inline;
+    function High: Integer; inline;
+    function Len:  Integer; inline;
+    procedure Check(AllowSingle: Boolean = False);
+  end;
+  TFlexRanges = TArray<TFlexRange>;  // [[Low1, High1], [Low2, High2], ...]
+  TFlexRangesHelper = record helper for TFlexRanges
+    procedure Check(); overload;
+    procedure Check(const Dims: TFlexDimensions); overload;
+  end;
+
+  TSliceIndexes = array of Integer;  // スライス用インデックス配列
+  TSliceIndexesArrayHelper = record helper for TArray<TSliceIndexes>
+    procedure Check(const Dims: TFlexDimensions);
+  end;
+
+  TCoords = array of Integer;  // 座標配列 [x, y, z, ...]
+  TCoordsHelper = record helper for TCoords
+  public
+    class function FromArray(const Coords: array of Integer): TCoords; static;
   end;
 
   // for in 用列挙子
@@ -130,7 +138,7 @@ type
     function GetCoords(LinearIndex: Integer): TCoords;
     function GetOffset(const Coords: array of Integer): Integer;
 
-    procedure InitializeCoords(var Coords: TCoords);
+    procedure InitializeCoords(out Coords: TCoords);
     function IncCoords(var Coords: TCoords): Boolean;
 
     property ItemAt[const Coords: TCoords]: T read GetValue write SetValue;
@@ -140,7 +148,6 @@ type
     property TotalSize: Integer read FTotalSize;
 
     function Reshape(const Shapes: array of Integer; BaseIndex: Integer): TFlexArray<T>;
-    procedure ReshapeVector(BaseIndex: Integer); // 1D
     procedure ReshapeRange(const Range: TFlexRange); overload; // 1D
     procedure ReshapeRange(const Ranges: TFlexRanges); overload; // nD
     procedure ReshapeRange(const RangeStr: string); overload;
@@ -260,6 +267,110 @@ begin
   Result := High - Low + 1;
 end;
 
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] TFlexRangeの妥当性チェック
+// [引数] AllowSingle: True=1要素(単一インデックス)も許可, False=2要素のみ許可(デフォルト)
+// [戻値] なし
+// [備考] 不正な場合は例外を発生
+//////////////////////////////////////////////////////////////////////////////////////
+procedure TFlexRangeHelper.Check(AllowSingle: Boolean = False);
+begin
+  if AllowSingle then
+  begin
+    if System.Length(Self) > 2 then
+      raise Exception.CreateFmt('TFlexRange: 要素数が不正です。%d要素あります。', [System.Length(Self)]);
+  end
+  else
+  begin
+    if System.Length(Self) <> 2 then
+      raise Exception.CreateFmt('TFlexRange: 要素数が不正です。%d要素あります。', [System.Length(Self)]);
+  end;
+
+  if System.Length(Self) = 2 then
+    if Self.Low > Self.High then
+      raise Exception.CreateFmt('TFlexRange: Low(%d) > High(%d) は不正です。', [Low, High]);
+end;
+
+{ TFlexRangesHelper }
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] TFlexRangesの妥当性チェック
+// [引数] なし
+// [戻値] なし
+// [備考] 不正な場合は例外を発生
+//////////////////////////////////////////////////////////////////////////////////////
+procedure TFlexRangesHelper.Check();
+var
+  i: Integer;
+begin
+  for i := 0 to System.Length(Self) - 1 do
+    Self[i].Check(false);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] TFlexRangesの妥当性チェック（次元範囲も検証）
+// [引数] Dims: 各次元のLow/High情報
+// [戻値] なし
+// [備考] 不正な場合は例外を発生
+//////////////////////////////////////////////////////////////////////////////////////
+procedure TFlexRangesHelper.Check(const Dims: TFlexDimensions);
+var
+  i: Integer;
+  Range: TFlexRange;
+  TargetDim: TFlexDimension;
+begin
+  if System.Length(Self) <> System.Length(Dims) then
+    raise Exception.CreateFmt('TFlexRanges: 次元数が一致しません。Ranges=%d, Dims=%d', [System.Length(Self), System.Length(Dims)]);
+
+  for i := 0 to System.Length(Self) - 1 do
+  begin
+    TargetDim := Dims.Items[i + 1];
+    Range := Self[i];
+    Range.Check(True);
+
+    if System.Length(Range) = 1 then
+    begin
+      // 単一インデックスがDimsの範囲内か検証
+      if (Range.Low < TargetDim.Low) or (Range.Low > TargetDim.High) then
+        raise Exception.CreateFmt('TFlexRanges: 第%d次元のインデックス%dが範囲外です。範囲=%d..%d',
+          [i + 1, Range.Low, TargetDim.Low, TargetDim.High]);
+    end
+    else
+    begin
+      // [Low, High]ペアがDimsの範囲内か検証
+      if (Range.Low < TargetDim.Low) or (Range.High > TargetDim.High) then
+        raise Exception.CreateFmt('TFlexRanges: 第%d次元の範囲[%d..%d]が配列範囲外です。範囲=%d..%d',
+          [i + 1, Range.Low, Range.High, TargetDim.Low, TargetDim.High]);
+    end;
+  end;
+end;
+
+{ TSliceIndexesArrayHelper }
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] TSliceIndexesArrayの妥当性チェック（次元数＋全次元分）
+// [引数] Dims: 各次元のLow/High情報
+// [戻値] なし
+// [備考] 不正な場合は例外を発生。空配列は全範囲指定なのでスキップ
+//////////////////////////////////////////////////////////////////////////////////////
+procedure TSliceIndexesArrayHelper.Check(const Dims: TFlexDimensions);
+var
+  i: Integer;
+  Index: Integer;
+  Dim: TFlexDimension;
+begin
+  if System.Length(Self) <> System.Length(Dims) then
+    raise Exception.CreateFmt('TSliceIndexesArray: 次元数が一致しません。Indexes=%d, Dims=%d',
+      [System.Length(Self), System.Length(Dims)]);
+
+  for i := 0 to System.High(Self) do
+  begin
+    Dim := Dims.Items[i + 1];
+    for Index in Self[i] do
+      if (Index < Dim.Low) or (Index > Dim.High) then
+        raise Exception.CreateFmt('TSliceIndexes: 第%d次元のインデックス%dが範囲外です。範囲=%d..%d',
+          [i + 1, Index, Dim.Low, Dim.High]);
+  end;
+end;
+
 { TCoordsHelper }
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] array of Integer から TCoords への変換
@@ -352,7 +463,6 @@ constructor TFlexArray<T>.TCoordsIterator.Create(const Parent: Pointer; Ranges: 
 var
   i: Integer;
   ParentArray: TFlexArray<T>;
-  TargetDim: TFlexDimension;
 begin
   inherited Create;
   FData := Parent;
@@ -361,36 +471,7 @@ begin
   FRanges := Copy(ParentArray.GetRanges);
   if Ranges <> nil then
   begin
-    // 次元数チェック
-    if System.Length(Ranges) <> ParentArray.DimensionCount then
-      raise Exception.CreateFmt('CoordsIterator: 次元数が一致しません。配列=%d, 指定=%d',
-        [ParentArray.DimensionCount, System.Length(Ranges)]);
-
-    for i := 0 to System.High(Ranges) do
-    begin
-      TargetDim := ParentArray.FDims.Items[i + 1];
-
-      case System.Length(Ranges[i]) of
-        0: ; // [] 全部
-        1:   // [L]
-        begin
-          if (Ranges[i].Low < TargetDim.Low) or (Ranges[i].Low > TargetDim.High) then
-            raise Exception.CreateFmt('CoordsIterator: 第%d次元の範囲が配列の範囲外です (指定=%d, 配列=%d..%d)',
-              [i + 1, Ranges[i].Low, TargetDim.Low, TargetDim.High]);
-        end;
-        2:   // [L, H]
-        begin
-          if (Ranges[i].Low < TargetDim.Low) or (Ranges[i].High > TargetDim.High) then
-            raise Exception.CreateFmt('CoordsIterator: 第%d次元の範囲が配列の範囲外です (指定=%d..%d, 配列=%d..%d)',
-              [i + 1, Ranges[i].Low, Ranges[i].High, TargetDim.Low, TargetDim.High]);
-          if Ranges[i].Low > Ranges[i].High then
-            raise Exception.CreateFmt('CoordsIterator: 第%d次元の範囲が不正です (Low:%d > High:%d)',
-              [i + 1, Ranges[i].Low, Ranges[i].High]);
-        end;
-      else
-        raise Exception.CreateFmt('CoordsIterator: 第%d次元の指定が不正です（要素数=%d）', [i + 1, System.Length(Ranges[i])]);
-      end;
-    end;
+    Ranges.Check(ParentArray.FDims);
 
     for i := 0 to System.High(Ranges) do
     begin
@@ -488,14 +569,7 @@ begin
   // 後ろの次元から歩幅を計算することで多次元に対応
   for i := System.High(Ranges) downto 0 do
   begin
-    // 引数の配列が [Low, High] のペアになっているか念のためチェック
-    if System.Length(Ranges[i]) <> 2 then
-      raise Exception.CreateFmt(
-        'TFlexArray: 第 %d 次元の指定が [Low, High] のペアではありません。', [i + 1]);
-
-    if Ranges[i].Low > Ranges[i].High then
-      raise Exception.CreateFmt(
-        'TFlexArray: 第 %d 次元の範囲が不正です (Low:%d > High:%d)', [i + 1, Ranges[i].Low, Ranges[i].High]);
+    Ranges[i].Check;
 
     FDims[i].Low    := Ranges[i].Low;    // 0ベースで格納
     FDims[i].High   := Ranges[i].High;
@@ -623,17 +697,6 @@ function TFlexArray<T>.Reshape(const Shapes: array of Integer; BaseIndex: Intege
 begin
   ReshapeRange(ShapesToRanges(Shapes, BaseIndex));
   Exit(Self);
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
-// [概要] ベクトル形状に再定義（1次元専用）
-// [引数] 開始インデックス
-// [戻値] なし
-// [使用例] Vector.ReshapeVector(1)  // 1始まりのベクトルに再定義
-//////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.ReshapeVector(BaseIndex: Integer);
-begin
-  ReshapeRange([[BaseIndex, BaseIndex + FTotalSize - 1]]);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1210,13 +1273,12 @@ begin
   Result := TCoordsIterator.Create(@Self, Ranges);
 end;
 
-
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 座標を初期化
 // [引数] 初期化する座標配列
 // [戻値] なし
 //////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.InitializeCoords(var Coords: TCoords);
+procedure TFlexArray<T>.InitializeCoords(out Coords: TCoords);
 var
   i: Integer;
 begin
@@ -1298,45 +1360,14 @@ end;
 function TFlexArray<T>.Slice(Ranges: TFlexRanges): TFlexArray<T>;
 var
   i: Integer;
-  Range: TFlexRange;
   SingleDimCount: Integer;
-  TargetDim: TFlexDimension;
 begin
-  // 入力チェック
-  if System.Length(Ranges) <> Self.DimensionCount then
-    raise Exception.CreateFmt('Slice: 指定された次元数(%d)が配列の次元数(%d)と一致しません',
-      [System.Length(Ranges), Self.DimensionCount]);
+  Ranges.Check(FDims);
 
   SingleDimCount := 0;
   for i := 0 to System.High(Ranges) do
-  begin
-    TargetDim := Self.FDims.Items[i + 1];
-    Range := Ranges[i];
-    case System.Length(Range) of
-      0: begin
-          // OK
-        end;
-      1: begin
-          // 単一指定
-          if (TargetDim.Low <= Range.Low) and (Range.Low <= TargetDim.High) then begin
-          end else begin
-            raise Exception.CreateFmt('Slice: 第%d次元の指定%dが範囲外です[%d..%d]',
-              [i + 1, Range.Low, TargetDim.Low, TargetDim.High]);
-          end;
-          Inc(SingleDimCount);
-        end;
-      2: begin
-          // 範囲指定
-          if (TargetDim.Low <= Range.Low) and (Range.High <= TargetDim.High) and (Range.Low <= Range.High) then begin
-          end else begin
-            raise Exception.CreateFmt('Slice: 第%d次元の範囲指定[%d..%d]が無効です[%d..%d]',
-              [i + 1, Range.Low, Range.High, TargetDim.Low, TargetDim.High]);
-          end;
-        end;
-      else
-        raise Exception.CreateFmt('Slice: 第%d次元の指定形式が無効です', [i + 1]);
-    end;
-  end;
+    if System.Length(Ranges[i]) = 1 then
+      Inc(SingleDimCount);
 
   if Self.DimensionCount = SingleDimCount then
     raise Exception.Create('Slice: 全ての次元が単一指定されています。スカラー値を取得してください。');
@@ -1354,33 +1385,8 @@ end;
 //         Juliaの arr[[1,2,3], :, [4,5]] に相当
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.SliceIndexed(const Indexes: TArray<TSliceIndexes>; BaseIndex: Integer = 0): TFlexArray<T>;
-var
-  i, j: Integer;
-  DimIndexes: TSliceIndexes;
-  TargetDim: TFlexDimension;
-  Index: Integer;
 begin
-  // 入力チェック
-  if System.Length(Indexes) <> Self.DimensionCount then
-    raise Exception.CreateFmt('SliceIndexed: 指定された次元数(%d)が配列の次元数(%d)と一致しません',
-      [System.Length(Indexes), Self.DimensionCount]);
-
-  // インデックス範囲チェック
-  for i := 1 to Self.DimensionCount do
-  begin
-    DimIndexes := Indexes[i - 1];
-    TargetDim := Self.FDims.Items[i];
-
-    if System.Length(DimIndexes) = 0 then
-      Continue; // [] は全範囲指定なのでチェックしない
-
-    for Index in DimIndexes do
-    begin
-      if (TargetDim.Low > Index) or (Index > TargetDim.High) then
-        raise Exception.CreateFmt('SliceIndexed: 第%d次元のインデックス%dが範囲外です[%d..%d]',
-          [i, Index, TargetDim.Low, TargetDim.High]);
-    end;
-  end;
+  Indexes.Check(FDims);
 
   Result := SliceIndexedCore(Indexes, BaseIndex);
 end;
