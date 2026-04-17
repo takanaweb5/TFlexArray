@@ -110,7 +110,7 @@ type
     function GetEnumerator: TFlexArrayEnumerator<T>;
 
   public
-    constructor Create(const Shapes: array of Integer; BaseIndex: Integer); overload; // nD
+    constructor Create(const Shapes: array of Integer; BaseIndex: Integer = 0); overload; // nD
     constructor CreateFromRange(const Range: TFlexRange); overload; // 1D
     constructor CreateFromRange(const Ranges: TFlexRanges); overload; // nD
     constructor CreateFromRange(const RangeStr: string); overload;
@@ -138,7 +138,7 @@ type
     property TotalSize: Integer read GetTotalSize;
     property IsView: Boolean read FIsView;
 
-    function Reshape(const Shapes: array of Integer; BaseIndex: Integer): TFlexArray<T>;
+    function Reshape(const Shapes: array of Integer; BaseIndex: Integer = 0): TFlexArray<T>;
     procedure ReshapeRange(const Range: TFlexRange); overload; // 1D
     procedure ReshapeRange(const Ranges: TFlexRanges); overload; // nD
     procedure ReshapeRange(const RangeStr: string); overload;
@@ -549,7 +549,7 @@ end;
 // [戻値] なし
 // [使用例] TFlexArray<Integer>.Create([3, 4], 1)  // 1始まりの3x4行列
 //////////////////////////////////////////////////////////////////////////////////////
-constructor TFlexArray<T>.Create(const Shapes: array of Integer; BaseIndex: Integer);
+constructor TFlexArray<T>.Create(const Shapes: array of Integer; BaseIndex: Integer = 0);
 begin
   SetLength(FData, InitializeDimensions(ShapesToRanges(Shapes, BaseIndex)));
 end;
@@ -592,23 +592,12 @@ end;
 // [概要] FlexArrayからFlexArrayを生成する
 // [引数] 元のFlexArray
 // [戻値] なし
+// [使用例] TFlexArray<Integer>.CreateFromFlexArray(arr, 1)
 //////////////////////////////////////////////////////////////////////////////////////
 constructor TFlexArray<T>.CreateFromFlexArray(const Src: TFlexArray<T>);
 begin
   FDims := Copy(Src.FDims);
   FData := Copy(Src.FData);
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
-// [概要] 動的一次元配列からFlexArrayを生成する
-// [引数] 元の動的配列, 開始インデックス(省略時:0)
-// [戻値] なし
-// [使用例] TFlexArray<Integer>.CreateFromArray(arr, 1)
-//////////////////////////////////////////////////////////////////////////////////////
-constructor TFlexArray<T>.CreateFromArray(const Src: TArray<T>; BaseIndex: Integer = 0);
-begin
-  InitializeDimensions([[BaseIndex, BaseIndex + System.Length(Src) - 1]]);
-  FData := Copy(Src);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -628,10 +617,23 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
+// [概要] 動的一次元配列からFlexArrayを生成する
+// [引数] 元の動的配列, 開始インデックス(省略時:0)
+// [戻値] なし
+// [使用例] TFlexArray<Integer>.CreateFromArray(arr, 1)
+//////////////////////////////////////////////////////////////////////////////////////
+constructor TFlexArray<T>.CreateFromArray(const Src: TArray<T>; BaseIndex: Integer = 0);
+begin
+  InitializeDimensions([[BaseIndex, BaseIndex + System.Length(Src) - 1]]);
+  FData := Copy(Src);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
 // [概要] 参照生成コンストラクタ
 // [引数] 元の動的配列, 開始インデックス(省略時:0)
 // [戻値] なし
 // [備考] CreateFromArrayと異なり、変更は元の配列に反映される
+// [使用例] TFlexArray<Integer>.ViewFromArray(arr, 1)
 //////////////////////////////////////////////////////////////////////////////////////
 constructor TFlexArray<T>.ViewFromArray(const Src: TArray<T>; BaseIndex: Integer = 0);
 begin
@@ -645,9 +647,8 @@ end;
 // [引数] 各次元の形状配列, 開始インデックス
 // [戻値] self(メソッドチェーン用)
 // [使用例] Matrix.Reshape([3, 2], 1)  // 1始まりの3x2行列に再定義
-// [備考] 変更前後の全要素数が一致する必要あり
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.Reshape(const Shapes: array of Integer; BaseIndex: Integer): TFlexArray<T>;
+function TFlexArray<T>.Reshape(const Shapes: array of Integer; BaseIndex: Integer = 0): TFlexArray<T>;
 begin
   ReshapeRange(ShapesToRanges(Shapes, BaseIndex));
   Exit(Self);
@@ -699,6 +700,7 @@ end;
 // [概要] ベースインデックスを再設定
 // [引数] BaseIndex - 新しいベースインデックス
 // [戻値] なし
+// [使用例] Matrix.Rebase(1)
 //////////////////////////////////////////////////////////////////////////////////////
 procedure TFlexArray<T>.Rebase(BaseIndex: Integer);
 var
@@ -717,6 +719,7 @@ end;
 // [概要] 各次元のベースインデックスを個別に指定して再設定
 // [引数] BaseIndexes - 各次元のベースインデックス配列
 // [戻値] なし
+// [使用例] Tensor.Rebase([1, 0, 1])
 //////////////////////////////////////////////////////////////////////////////////////
 procedure TFlexArray<T>.Rebase(const BaseIndexes: array of Integer);
 var
