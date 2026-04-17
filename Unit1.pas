@@ -555,7 +555,8 @@ begin
   // 3. 4次元テンソルの転置テスト
   Log('3. 4次元テンソルの転置テスト:');
   Tensor3D := TFlexArray<Integer>.Create([2, 3, 2, 2], 1);
-  Tensor3D.Map(SequentialNumber);
+  for Coords in Tensor3D.CoordsIterator do
+    Tensor3D.ItemAt[Coords] := Coords[0] * 1000 + Coords[1] * 100 + Coords[2] * 10 + Coords[3];
   Log('元のテンソル (2x3x2x2):');
   Log(Tensor3D.ToString);
   Log('');
@@ -594,13 +595,15 @@ var
   Promoted1D, Promoted2D, Promoted3D: TFlexArray<Integer>;
   Demoted2D, Demoted3D, Demoted4D: TFlexArray<Integer>;
   i, j, k: Integer;
+  Coords: TCoords;
 begin
   Log('=== PromoteDimension/DemoteDimensionテスト ===');
   
   // 1. 1次元配列の昇格テスト
   Log('1. 1次元配列の昇格テスト:');
   Vector1D := TFlexArray<Integer>.Create([3], 1);
-  Vector1D.Map(SequentialNumber);
+  for Coords in Vector1D.CoordsIterator do
+    Vector1D.ItemAt[Coords] := Coords[0];
   Log('元の1次元配列 (1..3):');
   Log(Vector1D.ToString);
   Log('範囲: ' + Vector1D.ToRangesString);
@@ -624,7 +627,8 @@ begin
   // 2. 2次元配列の昇格テスト
   Log('2. 2次元配列の昇格テスト:');
   Vector1D := TFlexArray<Integer>.Create([6], 1);
-  Vector1D.Map(SequentialNumber);
+  for Coords in Vector1D.CoordsIterator do
+    Vector1D.ItemAt[Coords] := Coords[0];
   Matrix2D := TFlexArray<Integer>.CreateFromFlexArray(Vector1D);
   Matrix2D.Reshape([2, 3], 1);
   Log('元の2次元配列 (2x3):');
@@ -656,7 +660,8 @@ begin
   // 3. 3次元配列の昇格テスト
   Log('3. 3次元配列の昇格テスト:');
   Vector1D := TFlexArray<Integer>.Create([8], 1);
-  Vector1D.Map(SequentialNumber);
+  for Coords in Vector1D.CoordsIterator do
+    Vector1D.ItemAt[Coords] := Coords[0];
   Tensor3D := TFlexArray<Integer>.CreateFromFlexArray(Vector1D);
   Tensor3D.Reshape([2, 2, 2], 1);
   Log('元の3次元配列 (2x2x2):');
@@ -677,7 +682,8 @@ begin
   // 2次元配列の削除テスト
   Log('4.1 2次元配列の次元削除:');
   Vector1D := TFlexArray<Integer>.Create([6], 1);
-  Vector1D.Map(SequentialNumber);
+  for Coords in Vector1D.CoordsIterator do
+    Vector1D.ItemAt[Coords] := Coords[0];
   Matrix2D := TFlexArray<Integer>.CreateFromFlexArray(Vector1D);
   Matrix2D.Reshape([2, 1, 3], 1);
   Log('元の3次元配列 (2x1x3):');
@@ -695,7 +701,8 @@ begin
   // 3次元配列の削除テスト
   Log('4.2 3次元配列の次元削除:');
   Vector1D := TFlexArray<Integer>.Create([12], 1);
-  Vector1D.Map(SequentialNumber);
+  for Coords in Vector1D.CoordsIterator do
+    Vector1D.ItemAt[Coords] := Coords[0];
   Tensor3D := TFlexArray<Integer>.CreateFromFlexArray(Vector1D);
   Tensor3D.Reshape([1, 2, 2, 3], 1);
   Log('元の4次元配列 (1x2x2x3):');
@@ -713,7 +720,8 @@ begin
   // 5. 昇格・降格のチェーンテスト
   Log('5. 昇格・降格のチェーンテスト:');
   Vector1D := TFlexArray<Integer>.Create([4], 1);
-  Vector1D.Map(SequentialNumber);
+  for Coords in Vector1D.CoordsIterator do
+    Vector1D.ItemAt[Coords] := Coords[0];
   Log('開始: 1次元配列 (1..4):');
   Log(Vector1D.ToString);
   
@@ -739,7 +747,8 @@ begin
   // 6. BaseIndex保持テスト
   Log('6. BaseIndex保持テスト:');
   Vector1D := TFlexArray<Integer>.CreateFromRange('[5..6, 10..12]');
-  Vector1D.Map(SequentialNumber);
+  for Coords in Vector1D.CoordsIterator do
+    Vector1D.ItemAt[Coords] := Coords[0] * 10 + Coords[1];
   Matrix2D := TFlexArray<Integer>.CreateFromFlexArray(Vector1D);
   Matrix2D.Reshape([2, 3], 5);
   Log('元の配列 (BaseIndex=[5,10]):');
@@ -758,7 +767,8 @@ begin
   
   // 1次元配列のラウンドトリップ
   Vector1D := TFlexArray<Integer>.Create([3], 1);
-  Vector1D.Map(SequentialNumber);
+  for Coords in Vector1D.CoordsIterator do
+    Vector1D.ItemAt[Coords] := Coords[0];
   Promoted1D := TFlexArray<Integer>.CreateFromFlexArray(Vector1D);
   Log('元の1次元配列:');
   Log('  ToString: ' + Vector1D.ToString);
@@ -777,7 +787,8 @@ begin
   
   // 2次元配列のラウンドトリップ
   Vector1D := TFlexArray<Integer>.Create([6], 1);
-  Vector1D.Map(SequentialNumber);
+  for Coords in Vector1D.CoordsIterator do
+    Vector1D.ItemAt[Coords] := Coords[0];
   Matrix2D := TFlexArray<Integer>.CreateFromFlexArray(Vector1D);
   Matrix2D.Reshape([2, 3], 1);
   Log('元の2次元配列:');
@@ -798,7 +809,8 @@ begin
   
   // 複数次元のラウンドトリップ
   Vector1D := TFlexArray<Integer>.Create([4], 1);
-  Vector1D.Map(SequentialNumber);
+  for Coords in Vector1D.CoordsIterator do
+    Vector1D.ItemAt[Coords] := Coords[0];
   Promoted1D := TFlexArray<Integer>.CreateFromFlexArray(Vector1D);
   Log('元の1次元配列 (複数回昇格):');
   Log('  ToString: ' + Vector1D.ToString);
@@ -827,18 +839,21 @@ var
   Tensor1, Tensor2: TFlexArray<Integer>;
   ConcatResult: TFlexArray<Integer>;
   i, j: Integer;
+  Coords: TCoords;
 begin
   Log('=== Concatテスト ===');
 
   // 1. 1次元配列の結合テスト
   Log('1. 1次元配列の結合テスト:');
   Vector1 := TFlexArray<Integer>.Create([3], 1);
-  Vector1.Map(SequentialNumber);
+  for Coords in Vector1.CoordsIterator do
+    Vector1.ItemAt[Coords] := Coords[0];
   Log('Vector1 (1D, 3要素):');
   Log(Vector1.ToString);
 
   Vector2 := TFlexArray<Integer>.Create([2], 1);
-  Vector2.Map(SequentialNumber);
+  for Coords in Vector2.CoordsIterator do
+    Vector2.ItemAt[Coords] := Coords[0];
 
   Log('Vector2 (1D, 2要素):');
   Log(Vector2.ToString);
@@ -852,12 +867,14 @@ begin
   // 2. 2次元行列の水平結合テスト (HStack)
   Log('2. 2次元行列の水平結合テスト (HStack):');
   Matrix1 := TFlexArray<Integer>.Create([2, 3], 1);
-  Matrix1.Map(SequentialNumber);
+  for Coords in Matrix1.CoordsIterator do
+    Matrix1.ItemAt[Coords] := Coords[0] * 10 + Coords[1];
   Log('Matrix1 (2x3):');
   Log(Matrix1.ToString);
 
   Matrix2 := TFlexArray<Integer>.Create([2, 2], 1);
-  Matrix2.Map(SequentialNumber);
+  for Coords in Matrix2.CoordsIterator do
+    Matrix2.ItemAt[Coords] := Coords[0] * 10 + Coords[1];
   Log('Matrix2 (2x2):');
   Log(Matrix2.ToString);
 
@@ -870,12 +887,14 @@ begin
   // 3. 2次元行列の垂直結合テスト (VStack)
   Log('3. 2次元行列の垂直結合テスト (VStack):');
   Matrix1 := TFlexArray<Integer>.Create([2, 3], 1);
-  Matrix1.Map(SequentialNumber);
+  for Coords in Matrix1.CoordsIterator do
+    Matrix1.ItemAt[Coords] := Coords[0] * 10 + Coords[1];
   Log('Matrix1 (2x3):');
   Log(Matrix1.ToString);
 
   Matrix2 := TFlexArray<Integer>.Create([1, 3], 1);
-  Matrix2.Map(SequentialNumber);
+  for Coords in Matrix2.CoordsIterator do
+    Matrix2.ItemAt[Coords] := Coords[0] * 10 + Coords[1];
   Log('Matrix2 (1x3):');
   Log(Matrix2.ToString);
 
@@ -888,12 +907,14 @@ begin
   // 4. 3次元テンソルの結合テスト
   Log('4. 3次元テンソルの結合テスト:');
   Tensor1 := TFlexArray<Integer>.Create([2, 2, 3], 1);
-  Tensor1.Map(SequentialNumber);
+  for Coords in Tensor1.CoordsIterator do
+    Tensor1.ItemAt[Coords] := Coords[0] * 100 + Coords[1] * 10 + Coords[2];
   Log('Tensor1 (2x2x3):');
   Log(Tensor1.ToString);
   
   Tensor2 := TFlexArray<Integer>.Create([1, 2, 3], 1);
-  Tensor2.Map(SequentialNumber);
+  for Coords in Tensor2.CoordsIterator do
+    Tensor2.ItemAt[Coords] := Coords[0] * 100 + Coords[1] * 10 + Coords[2];
   Log('Tensor2 (1x2x3):');
   Log(Tensor2.ToString);
   
@@ -906,21 +927,23 @@ begin
   // 5. 次元数の異なる配列の結合テスト
   Log('5. 次元数の異なる配列の結合テスト:');
   Matrix1 := TFlexArray<Integer>.Create([2, 2], 1);
-  Matrix1.Map(SequentialNumber);
+  for Coords in Matrix1.CoordsIterator do
+    Matrix1.ItemAt[Coords] := Coords[0] * 10 + Coords[1];
   Log('Matrix1 (2x2):');
   Log(Matrix1.ToString);
 
   Vector1 := TFlexArray<Integer>.Create([2], 1);
-  Vector1.Map(SequentialNumber);
+  for Coords in Vector1.CoordsIterator do
+    Vector1.ItemAt[Coords] := Coords[0];
   Log('Vector1 (1D, 2要素):');
   Log(Vector1.ToString);
-  
+
   // 2Dと1Dを次元2で結合（自動的に1Dが2Dに昇格）
   ConcatResult := Matrix1.Concat(Vector1, 2);
   Log('Matrix1.Concat(Vector1, 2) - 2Dと1Dを次元2で結合 (2x3):');
   Log(ConcatResult.ToString);
   Log('');
-  
+
   // 6. 結合の検証テスト
   Log('6. 結合の検証テスト:');
   Matrix1 := TFlexArray<Integer>.Create([2, 2], 1);
@@ -934,19 +957,19 @@ begin
   Matrix2[2, 1] := 6;
   Log('Matrix2:');
   Log(Matrix2.ToString);
-  
+
   Matrix3 := Matrix1.HStack(Matrix2);
   Log('HStack結果:');
   Log(Matrix3.ToString);
-  
+
   // 検証
   Log('検証:');
-  Log(Format('Matrix3[1,1]=%d, Matrix3[1,2]=%d, Matrix3[1,3]=%d', 
+  Log(Format('Matrix3[1,1]=%d, Matrix3[1,2]=%d, Matrix3[1,3]=%d',
     [Matrix3[1,1], Matrix3[1,2], Matrix3[1,3]]));
-  Log(Format('Matrix3[2,1]=%d, Matrix3[2,2]=%d, Matrix3[2,3]=%d', 
+  Log(Format('Matrix3[2,1]=%d, Matrix3[2,2]=%d, Matrix3[2,3]=%d',
     [Matrix3[2,1], Matrix3[2,2], Matrix3[2,3]]));
   Log('');
-  
+
   Log('=== Concatテスト完了 ===');
 end;
 
@@ -956,33 +979,30 @@ var
   SingleWord: TFlexArray<string>;
   StringArray: TArray<string>;
   SpecialArray: TArray<string>;
+  Coords: TCoords;
 begin
   Log('=== AppendArray文字列テスト ===');
-  
+
   // 1. 基本的な文字列配列の結合
   Log('1. 基本的な文字列配列の結合:');
   Words1 := TFlexArray<string>.Create([3], 1);
-  Words1.Map(function(const Value: string; const Coords: TCoords): string
-            begin
-              Result := 'Apple_' + IntToStr(Coords[0]);
-            end);
+  for Coords in Words1.CoordsIterator do
+    Words1.ItemAt[Coords] := 'Apple_' + IntToStr(Coords[0]);
   Log('Words1:');
   Log(Words1.ToString);
-  
+
   Words2 := TFlexArray<string>.Create([2], 1);
-  Words2.Map(function(const Value: string; const Coords: TCoords): string
-            begin
-              Result := 'Orange_' + IntToStr(Coords[0]);
-            end);
+  for Coords in Words2.CoordsIterator do
+    Words2.ItemAt[Coords] := 'Orange_' + IntToStr(Coords[0]);
   Log('Words2:');
   Log(Words2.ToString);
-  
+
   // AppendArrayテスト
   Words3 := Words1.AppendArray(Words2);
   Log('Words1.AppendArray(Words2) - 結合結果:');
   Log(Words3.ToString);
   Log('');
-  
+
   // 2. TArray<string>からの結合
   Log('2. TArray<string>からの結合:');
   StringArray := ['Banana', 'Grape', 'Melon'];
@@ -990,48 +1010,41 @@ begin
   Log('Words1.AppendArray(["Banana", "Grape", "Melon"]) - 結合結果:');
   Log(Words3.ToString);
   Log('');
-  
+
   // 3. 単一値の追加
   Log('3. 単一値の追加:');
   SingleWord := Words1.AppendArray('Cherry');
   Log('Words1.AppendArray("Cherry") - 結合結果:');
   Log(SingleWord.ToString);
   Log('');
-  
+
   // 4. 複雑な文字列変換のテスト
   Log('4. 複雑な文字列変換のテスト:');
   Words1 := TFlexArray<string>.Create([2], 1);
-  Words1.Map(function(const Value: string; const Coords: TCoords): string
-            begin
-              Result := 'Item_' + IntToStr(Coords[0]) + '_' + 
-                       FormatDateTime('hhnnss', Now);
-            end);
+  for Coords in Words1.CoordsIterator do
+    Words1.ItemAt[Coords] := 'Item_' + IntToStr(Coords[0]) + '_' + FormatDateTime('hhnnss', Now);
   Log('Words1 (タイムスタンプ付き):');
   Log(Words1.ToString);
-  
+
   Words2 := TFlexArray<string>.Create([2], 1);
-  Words2.Map(function(const Value: string; const Coords: TCoords): string
-            begin
-              Result := 'Extra_' + UpperCase(StringOfChar('x', Coords[0]));
-            end);
+  for Coords in Words2.CoordsIterator do
+    Words2.ItemAt[Coords] := 'Extra_' + UpperCase(StringOfChar('x', Coords[0]));
   Log('Words2 (大文字変換):');
   Log(Words2.ToString);
-  
+
   Words3 := Words1.AppendArray(Words2);
   Log('結合結果:');
   Log(Words3.ToString);
   Log('');
-  
+
   // 5. 空文字列と特殊文字のテスト
   Log('5. 空文字列と特殊文字のテスト:');
   Words1 := TFlexArray<string>.Create([2], 1);
-  Words1.Map(function(const Value: string; const Coords: TCoords): string
-            begin
-              if Coords[0] = 1 then
-                Result := ''
-              else
-                Result := 'Special: ' + #9#10#13 + 'Chars';
-            end);
+  for Coords in Words1.CoordsIterator do
+    if Coords[0] = 1 then
+      Words1.ItemAt[Coords] := ''
+    else
+      Words1.ItemAt[Coords] := 'Special: ' + #9#10#13 + 'Chars';
   Log('Words1 (空文字列と特殊文字):');
   Log(Words1.ToString);
   
@@ -1049,16 +1062,15 @@ var
   Matrix1D, Matrix2D, Matrix3D: TFlexArray<string>;
   Matrix1D_Reshaped, Matrix2D_Reshaped: TFlexArray<string>;
   ComplexMatrix: TFlexArray<string>;
+  Coords: TCoords;
 begin
   Log('=== RangeStr文字列テスト ===');
 
   // 1. 1次元範囲文字列からの生成
   Log('1. 1次元範囲文字列からの生成:');
   Matrix1D := TFlexArray<string>.CreateFromRange('1..5 ');
-  Matrix1D.Map(function(const Value: string; const Coords: TCoords): string
-              begin
-                Result := 'Pos_' + IntToStr(Coords[0]);
-              end);
+  for Coords in Matrix1D.CoordsIterator do
+    Matrix1D.ItemAt[Coords] := 'Pos_' + IntToStr(Coords[0]);
   Log('Matrix1D (1..5):');
   Log(Matrix1D.ToString);
   Log('範囲情報: ' + Matrix1D.ToRangesString);
@@ -1067,10 +1079,8 @@ begin
   // 2. 2次元範囲文字列からの生成
   Log('2. 2次元範囲文字列からの生成:');
   Matrix2D := TFlexArray<string>.CreateFromRange('[1..3, 1..2]');
-  Matrix2D.Map(function(const Value: string; const Coords: TCoords): string
-              begin
-                Result := Format('[%d,%d]', [Coords[0], Coords[1]]);
-              end);
+  for Coords in Matrix2D.CoordsIterator do
+    Matrix2D.ItemAt[Coords] := Format('[%d,%d]', [Coords[0], Coords[1]]);
   Log('Matrix2D ([1..3,1..2]):');
   Log(Matrix2D.ToString);
   Log('範囲情報: ' + Matrix2D.ToRangesString);
@@ -1079,10 +1089,8 @@ begin
   // 3. 3次元範囲文字列からの生成
   Log('3. 3次元範囲文字列からの生成:');
   Matrix3D := TFlexArray<string>.CreateFromRange('1..2, 1..2, 1..2');
-  Matrix3D.Map(function(const Value: string; const Coords: TCoords): string
-              begin
-                Result := Format('[%d,%d,%d]', [Coords[0], Coords[1], Coords[2]]);
-              end);
+  for Coords in Matrix3D.CoordsIterator do
+    Matrix3D.ItemAt[Coords] := Format('[%d,%d,%d]', [Coords[0], Coords[1], Coords[2]]);
   Log('Matrix3D (1..2,1..2,1..2):');
   Log(Matrix3D.ToString);
   Log('範囲情報: ' + Matrix3D.ToRangesString);
@@ -1091,10 +1099,8 @@ begin
   // 4. ReshapeRange文字列テスト（1次元）
   Log('4. ReshapeRange文字列テスト（1次元）:');
   Matrix1D_Reshaped := TFlexArray<string>.Create([5], 1);
-  Matrix1D_Reshaped.Map(function(const Value: string; const Coords: TCoords): string
-                       begin
-                         Result := 'Old_' + IntToStr(Coords[0]);
-                       end);
+  for Coords in Matrix1D_Reshaped.CoordsIterator do
+    Matrix1D_Reshaped.ItemAt[Coords] := 'Old_' + IntToStr(Coords[0]);
   Log('変更前:');
   Log(Matrix1D_Reshaped.ToString);
   Log('範囲情報: ' + Matrix1D_Reshaped.ToRangesString);
@@ -1108,10 +1114,8 @@ begin
   // 5. ReshapeRange文字列テスト（2次元）
   Log('5. ReshapeRange文字列テスト（2次元）:');
   Matrix2D_Reshaped := TFlexArray<string>.Create([2, 3], 1);
-  Matrix2D_Reshaped.Map(function(const Value: string; const Coords: TCoords): string
-                       begin
-                         Result := Format('[%d,%d]', [Coords[0], Coords[1]]);
-                       end);
+  for Coords in Matrix2D_Reshaped.CoordsIterator do
+    Matrix2D_Reshaped.ItemAt[Coords] := Format('[%d,%d]', [Coords[0], Coords[1]]);
   Log('変更前:');
   Log(Matrix2D_Reshaped.ToString);
   Log('範囲情報: ' + Matrix2D_Reshaped.ToRangesString);
@@ -1125,10 +1129,8 @@ begin
   // 6. 複雑な範囲文字列テスト
   Log('6. 複雑な範囲文字列テスト:');
   ComplexMatrix := TFlexArray<string>.CreateFromRange(' [ -2 .. 2 , 0 .. 1 ] ');
-  ComplexMatrix.Map(function(const Value: string; const Coords: TCoords): string
-                   begin
-                     Result := Format('Neg_%d_%d', [Coords[0], Coords[1]]);
-                   end);
+  for Coords in ComplexMatrix.CoordsIterator do
+    ComplexMatrix.ItemAt[Coords] := Format('Neg_%d_%d', [Coords[0], Coords[1]]);
   Log('ComplexMatrix ([-2..2,0..1]):');
   Log(ComplexMatrix.ToString);
   Log('範囲情報: ' + ComplexMatrix.ToRangesString);
@@ -1150,6 +1152,7 @@ var
   Data4D, Data3D, Data2D, Data1D: TFlexArray<Integer>;
   i, j, k, l, expectedValue: Integer;
   a: array of array of array of Integer;
+  Coords: TCoords;
 begin
   a := [
   {Page 0} [
@@ -1173,7 +1176,8 @@ begin
   Data4D := TFlexArray<Integer>.Create([2, 2, 3, 2], 1);
   Data4D.Reshape([2, 2, 3, 2], 1);  // 2x2x3x4 → 2x2x3x2 に変更
 //  Data4D.ReshapeRange([[1, 2], [-1, 0], [2021, 2023], [0, 1]]);
-  Data4D.Map(SequentialNumber2);
+  for Coords in Data4D.CoordsIterator do
+    Data4D.ItemAt[Coords] := Coords[0] * 1000 + Coords[1] * 100 + Coords[2] * 10 + Coords[3];
 
   // 4. Reshape後の範囲情報を確認
   log('Reshape後の範囲情報: ' + Data4D.ToRangesString);
@@ -1279,21 +1283,21 @@ var
   InsertArray: TFlexArray<Integer>;
   ResultArray: TFlexArray<Integer>;
   Vector1D: TFlexArray<Integer>;
+  Coords: TCoords;
 begin
   Log('=== SliceDimIndexesCore カウンタリセットテスト ===');
   
   // 1. 2次元配列での列方向挿入テスト（カウンタリセット発生）
   Log('1. 2次元配列 列方向挿入テスト:');
   Matrix2D := TFlexArray<Integer>.Create([2, 3], 1);
-  Matrix2D.Map(SequentialNumber);
+  for Coords in Matrix2D.CoordsIterator do
+    Matrix2D.ItemAt[Coords] := Coords[0] * 10 + Coords[1];
   Log('元の行列 (2x3):');
   Log(Matrix2D.ToString);
   
   InsertArray := TFlexArray<Integer>.Create([2, 2], 1);
-  InsertArray.Map(function(const Value: Integer; const Coords: TCoords): Integer
-                 begin
-                   Result := 100 + Coords[0] * 10 + Coords[1];
-                 end);
+  for Coords in InsertArray.CoordsIterator do
+    InsertArray.ItemAt[Coords] := 100 + Coords[0] * 10 + Coords[1];
   Log('挿入配列 (2x2):');
   Log(InsertArray.ToString);
 
@@ -1306,15 +1310,14 @@ begin
   // 2. 3次元配列での深さ方向挿入テスト
   Log('2. 3次元配列 深さ方向挿入テスト:');
   Matrix3D := TFlexArray<Integer>.Create([2, 2, 2], 1);
-  Matrix3D.Map(SequentialNumber);
+  for Coords in Matrix3D.CoordsIterator do
+    Matrix3D.ItemAt[Coords] := Coords[0] * 100 + Coords[1] * 10 + Coords[2];
   Log('元のテンソル (2x2x2):');
   Log(Matrix3D.ToString);
   
   InsertArray := TFlexArray<Integer>.Create([1, 2, 2], 1);
-  InsertArray.Map(function(const Value: Integer; const Coords: TCoords): Integer
-                 begin
-                   Result := 200 + Coords[0] * 100 + Coords[1] * 10 + Coords[2];
-                 end);
+  for Coords in InsertArray.CoordsIterator do
+    InsertArray.ItemAt[Coords] := 200 + Coords[0] * 100 + Coords[1] * 10 + Coords[2];
   Log('挿入配列 (1x2x2):');
   Log(InsertArray.ToString);
   
@@ -1327,7 +1330,8 @@ begin
   // 3. 複数回挿入でのカウンタリセット連続発生テスト
   Log('3. 複数回挿入テスト:');
   Vector1D := TFlexArray<Integer>.Create([4], 1);
-  Vector1D.Map(SequentialNumber);
+  for Coords in Vector1D.CoordsIterator do
+    Vector1D.ItemAt[Coords] := Coords[0];
   Log('元の1次元配列:');
   Log(Vector1D.ToString);
   
@@ -1338,10 +1342,8 @@ begin
   
   // 2回連続で挿入（カウンタリセットが複数回発生）
   InsertArray := TFlexArray<Integer>.Create([2, 1], 1);
-  InsertArray.Map(function(const Value: Integer; const Coords: TCoords): Integer
-                 begin
-                   Result := 300 + Coords[0] * 10 + Coords[1];
-                 end);
+  for Coords in InsertArray.CoordsIterator do
+    InsertArray.ItemAt[Coords] := 300 + Coords[0] * 10 + Coords[1];
   
   ResultArray := Vector1D.InsertDim(2, 2, InsertArray);
   Log('1回目挿入後 (2x3):');
@@ -1361,13 +1363,15 @@ var
   Row1, Row2, Col1, Col2: TFlexArray<Integer>;
   Slice1, Slice2: TFlexArray<Integer>;
   Page1, Page2: TFlexArray<Integer>;
+  Coords: TCoords;
 begin
   Log('=== SliceDim/SliceRow/ChooseCol テスト ===');
 
   // 1. 2次元行列の準備
   Log('1. 2次元行列 (3x4) を準備:');
   Matrix2D := TFlexArray<Integer>.Create([3, 4], 1);
-  Matrix2D.Map(SequentialNumber);
+  for Coords in Matrix2D.CoordsIterator do
+    Matrix2D.ItemAt[Coords] := Coords[0] * 10 + Coords[1];
   Log(Matrix2D.ToString);
   Log('');
 
@@ -1396,7 +1400,8 @@ begin
   // 4. 3次元配列の準備
   Log('4. 3次元配列 (2x3x2) を準備:');
   Matrix3D := TFlexArray<Integer>.Create([2, 3, 2], 1);
-  Matrix3D.Map(SequentialNumber);
+  for Coords in Matrix3D.CoordsIterator do
+    Matrix3D.ItemAt[Coords] := Coords[0] * 100 + Coords[1] * 10 + Coords[2];
   Log(Matrix3D.ToString);
   Log('');
 
@@ -1425,7 +1430,8 @@ begin
   // 7. 1次元配列のSliceDimテスト
   Log('7. 1次元配列のSliceDimテスト:');
   var Vec1D := TFlexArray<Integer>.Create([5], 1);
-  Vec1D.Map(SequentialNumber);
+  for Coords in Vec1D.CoordsIterator do
+    Vec1D.ItemAt[Coords] := Coords[0];
   Log('  元の1次元配列:');
   Log(Vec1D.ToString);
   Log('  SliceDim(1, 3):');
@@ -1632,12 +1638,17 @@ var
   TestArray, TestArray2: TFlexArray<Integer>;
   VectorArray: TArray<Integer>;
   i: Integer;
+  Coords: TCoords;
 begin
   Memo1.Lines.Add('=== メソッドチェーンテスト ===');
 
   // 1. CreateFromRangeで "1..12" の配列を宣言
   TestArray := TFlexArray<Integer>.CreateFromRange('1..12');
-  TestArray.Map(SequentialNumber);
+  // CoordsIteratorで座標から値を設定
+  for Coords in TestArray.CoordsIterator do
+  begin
+    TestArray.ItemAt[Coords] := Coords[0];  // 1次元の場合
+  end;
   VectorArray := TestArray.ToVector;
 
   Memo1.Lines.Add('1. 元の配列 (1..12):');
@@ -1665,11 +1676,14 @@ procedure TestSliceIndexedBasic;
 var
   Matrix, Result: TFlexArray<Integer>;
   i, j: Integer;
+  Coords: TCoords;
 begin
   Log('=== SliceIndexed 基本テスト ===');
 
   // 3x3行列を作成
-  Matrix := TFlexArray<Integer>.CreateFromRange('1..9').Map(SequentialNumber);
+  Matrix := TFlexArray<Integer>.CreateFromRange('1..9');
+  for Coords in Matrix.CoordsIterator do
+    Matrix.ItemAt[Coords] := Coords[0];
   Matrix.Reshape([3,3],1);
   Log('元の行列:');
   for i := 1 to 3 do
@@ -1695,11 +1709,14 @@ end;
 procedure TestSliceIndexedEmptyExpansion;
 var
   Matrix, Result: TFlexArray<Integer>;
+  Coords: TCoords;
 begin
   Log('=== SliceIndexed 空配列展開テスト ===');
   
   // 3x3行列を作成
-  Matrix := TFlexArray<Integer>.CreateFromRange('1..9').Map(SequentialNumber);
+  Matrix := TFlexArray<Integer>.CreateFromRange('1..9');
+  for Coords in Matrix.CoordsIterator do
+    Matrix.ItemAt[Coords] := Coords[0];
   Matrix.Reshape([3,3],1);
   
   // 全行、特定列を抽出
@@ -1717,11 +1734,14 @@ end;
 procedure TestSliceIndexedDimensionCompression;
 var
   Matrix, Result: TFlexArray<Integer>;
+  Coords: TCoords;
 begin
   Log('=== SliceIndexed 次元圧縮テスト ===');
   
   // 3x3行列を作成
-  Matrix := TFlexArray<Integer>.CreateFromRange('1..9').Map(SequentialNumber);
+  Matrix := TFlexArray<Integer>.CreateFromRange('1..9');
+  for Coords in Matrix.CoordsIterator do
+    Matrix.ItemAt[Coords] := Coords[0];
   Matrix.Reshape([3,3],1);
   
   // 単一行を抽出（次元圧縮されるはず）
@@ -1739,11 +1759,14 @@ end;
 procedure TestSliceIndexedComplex;
 var
   Tensor, Result: TFlexArray<Integer>;
+  Coords: TCoords;
 begin
   Log('=== SliceIndexed 複雑テスト ===');
   
   // 3x3x2テンソルを作成
-  Tensor := TFlexArray<Integer>.CreateFromRange('1..18').Map(SequentialNumber);
+  Tensor := TFlexArray<Integer>.CreateFromRange('1..18');
+  for Coords in Tensor.CoordsIterator do
+    Tensor.ItemAt[Coords] := Coords[0];
   Tensor.Reshape([3,3,2],1);
   Log(Tensor.ToString);
 
@@ -1763,11 +1786,14 @@ procedure TestSliceIndexedErrorCases;
 var
   Matrix: TFlexArray<Integer>;
   Result: TFlexArray<Integer>;
+  Coords: TCoords;
 begin
   Log('=== SliceIndexed エラーテスト ===');
   
   // 3x3行列を作成
-  Matrix := TFlexArray<Integer>.CreateFromRange('1..9').Map(SequentialNumber);
+  Matrix := TFlexArray<Integer>.CreateFromRange('1..9');
+  for Coords in Matrix.CoordsIterator do
+    Matrix.ItemAt[Coords] := Coords[0];
   Matrix.Reshape([3,3],1);
   
   try
