@@ -24,7 +24,7 @@ type
     property Items[Index: Integer]: TFlexDimension read GetDimension write SetDimension;
   end;
 
-  TFlexRange = TArray<Integer>;  // [Low, High] のペア
+  TFlexRange = array of Integer;  // [Low, High] のペア
   TFlexRangeHelper = record helper for TFlexRange
     function Low:  Integer; inline;
     function High: Integer; inline;
