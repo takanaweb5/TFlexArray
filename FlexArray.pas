@@ -1268,9 +1268,10 @@ end;
 // [引数] Indexes - 各次元のインデックス配列（空配列は全範囲指定）
 //       BaseIndex - ベースインデックス
 // [戻値] 抽出された配列
-// [使用例] result := arr.SliceIndexed([[1,2,3], [], [4,5]])
-//         NumPyの arr[np.ix_([1,2,3], :, [4,5])] に相当（直積を抽出）
-//         Juliaの arr[[1,2,3], :, [4,5]] に相当
+// [使用例] result := arr.SliceIndexed([[1,2,3], [], [4]])
+//         NumPyの arr[[1,2,3], :, 4] に相当
+//         Juliaの arr[[1,2,3], :, 4] に相当
+// [備考] [4]のように要素数が1の次元は潰される
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.SliceIndexed(const Indexes: TArray<TSliceIndexes>; BaseIndex: Integer = 0): TFlexArray<T>;
 begin
@@ -1689,22 +1690,22 @@ end;
 function TFlexArray<T>.TransposeCore(const NewDims: array of Integer): TFlexArray<T>;
 var
   i: Integer;
-  SelfCoords: TCoords;
+  Coords: TCoords;
   bak: TFlexDimensions;
 begin
   bak := Copy(FDims);
   try
-    // 論理転置を適用
+    // FDimsの順番を入れ替え
     LogicalTranspose(NewDims);
-    // 論理転置状態を利用し、新しい配列を作成
+    // 入替え後のFDimsを利用し、結果を作成
     Result := TFlexArray<T>.CreateFromRange(GetRanges);
 
-    // 論理転置状態を利用し、1対1でコピー
-    Result.InitializeCoords(SelfCoords);
+    // FDims入替え後のselfを利用して値を結果に設定
+    Self.InitializeCoords(Coords);
     for i := 0 to Result.FTotalSize - 1 do
     begin
-      Result.FData[i] := Self.ItemAt[SelfCoords];
-      Self.IncCoords(SelfCoords);
+      Result.FData[i] := Self.ItemAt[Coords];
+      Self.IncCoords(Coords);
     end;
   finally
     FDims := bak;
