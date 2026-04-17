@@ -60,9 +60,6 @@ type
     function MoveNext: Boolean;
   end;
 
-  // Map用コールバック関数サンプル(連番作成)
-  function SequentialNumber(const Value: Integer; const Coords: TCoords): Integer;
-
 type
   TFlexArray<T> = record
   type
@@ -80,10 +77,6 @@ type
       function GetEnumerator: TCoordsIterator;
     end;
 
-    // 非破壊的Map用コールバック
-    TMappedFunc<T, TResult> = reference to function(const Value: T; const Coords: TCoords): TResult;
-    // 破壊的Map用コールバック
-    TMapFunc<T> = reference to function(const Value: T; const Coords: TCoords): T;
     // Filter用コールバック
     TFilterFunc<T> = reference to function(const Value: T; const Coords: TCoords): Boolean;
   private
@@ -104,8 +97,8 @@ type
     function ValueToStr(const V: T): string;
     procedure InitializeDimensions(const Ranges: TFlexRanges);
     procedure CheckDimension(ExpectedDim: Integer);
-    procedure CheckViewMode;
-    function GetCompatibleBaseIndex(const Another: TFlexArray<T>): Integer;
+//    procedure CheckViewMode;
+//    function GetCompatibleBaseIndex(const Another: TFlexArray<T>): Integer;
     function RangesStringToRanges(const RangeStr: string): TFlexRanges;
     function ShapesToRanges(const Shapes: array of Integer; BaseIndex: Integer): TFlexRanges;
     procedure LogicalTranspose(const NewDims: array of Integer);
@@ -143,6 +136,7 @@ type
     property Elements[Index: Integer]: T read GetElement write SetElement;
     property DimensionCount: Integer read GetDimensionCount;
     property TotalSize: Integer read FTotalSize;
+    property IsView: Boolean read FIsView;
 
     function Reshape(const Shapes: array of Integer; BaseIndex: Integer): TFlexArray<T>;
     procedure ReshapeRange(const Range: TFlexRange); overload; // 1D
@@ -211,8 +205,6 @@ type
 
     // Swiftスタイル: 非破壊的(-ed) / 破壊的(原形)
     procedure Fill(Value: T);
-    function Map(const AFunc: TMapFunc<T>): TFlexArray<T>; overload;
-    function Mapped<TResult>(const AFunc: TMappedFunc<T, TResult>): TFlexArray<TResult>; overload;
 
     function Filter(const AFunc: TFilterFunc<T>): TArray<T>; overload;
 
@@ -769,19 +761,19 @@ end;
 // [戻値] なし
 // [備考] Viewモードの場合は例外を発生（ただし、数値型のみ許可）
 //////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.CheckViewMode;
-var
-  Val: TValue;
-begin
-  if FIsView then
-  begin
-    // 数値型のみ許可
-    Val := TValue.From<T>(default(T));
-    if Val.Kind in [tkInteger, tkFloat] then Exit;
-
-    raise Exception.Create('Viewモードの配列は変更できません。CreateFromFlexArrayでコピーしてから使用してください。');
-  end;
-end;
+//procedure TFlexArray<T>.CheckViewMode;
+//var
+//  Val: TValue;
+//begin
+//  if FIsView then
+//  begin
+//    // 数値型のみ許可
+//    Val := TValue.From<T>(default(T));
+//    if Val.Kind in [tkInteger, tkFloat] then Exit;
+//
+//    raise Exception.Create('Viewモードの配列は変更できません。CreateFromFlexArrayでコピーしてから使用してください。');
+//  end;
+//end;
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] SelfとAnotherのベースインデックスをチェックし、統一されたベースインデックスを返す
@@ -789,24 +781,24 @@ end;
 // [戻値] Integer - 統一されたベースインデックス
 // [備考] すべてが一致の場合：ベースインデックスを返す。不一致の場合：内部で例外
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.GetCompatibleBaseIndex(const Another: TFlexArray<T>): Integer;
-var
-  i: Integer;
-begin
-  Result := Self.FDims.Items[1].Low;  // 論理1次元のLow値
-
-  for i := 1 to Self.DimensionCount do
-  begin
-    if Self.FDims.Items[i].Low <> Result then
-      raise Exception.Create('GetCompatibleBaseIndex: 各配列のすべての次元で同じベースインデックスを使用する必要があります。混合ベースは未対応です。');
-  end;
-
-  for i := 1 to Another.DimensionCount do
-  begin
-    if Another.FDims.Items[i].Low <> Result then
-      raise Exception.CreateFmt('GetCompatibleBaseIndex: 異なるベースインデックスの配列は結合できません。Self=%d, Another=%d', [Result, Another.FDims.Items[i].Low]);
-  end;
-end;
+//function TFlexArray<T>.GetCompatibleBaseIndex(const Another: TFlexArray<T>): Integer;
+//var
+//  i: Integer;
+//begin
+//  Result := Self.FDims.Items[1].Low;  // 論理1次元のLow値
+//
+//  for i := 1 to Self.DimensionCount do
+//  begin
+//    if Self.FDims.Items[i].Low <> Result then
+//      raise Exception.Create('GetCompatibleBaseIndex: 各配列のすべての次元で同じベースインデックスを使用する必要があります。混合ベースは未対応です。');
+//  end;
+//
+//  for i := 1 to Another.DimensionCount do
+//  begin
+//    if Another.FDims.Items[i].Low <> Result then
+//      raise Exception.CreateFmt('GetCompatibleBaseIndex: 異なるベースインデックスの配列は結合できません。Self=%d, Another=%d', [Result, Another.FDims.Items[i].Low]);
+//  end;
+//end;
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 線形インデックスから多次元座標への変換
@@ -1871,7 +1863,7 @@ function TFlexArray<T>.Concat(const Another: TFlexArray<T>; TargetDim: Integer):
 var
   SelfReady, AnotherReady: TFlexArray<T>;
   DimDiff: Integer;
-  BaseIndex: Integer;
+//  BaseIndex: Integer;
 begin
   // TargetDimの制約チェック
   if (TargetDim < 1) or (TargetDim > Self.DimensionCount) then
@@ -1882,21 +1874,21 @@ begin
   DimDiff := Self.DimensionCount - Another.DimensionCount;
   if not (Self.DimensionCount - Another.DimensionCount in [0, 1]) then
     raise Exception.CreateFmt(
-      'Concat: %d次元配列と%d次元配列は結合できません。AnotherはSelfと同次元か1次元少ない必要があります', 
+      'Concat: %d次元配列と%d次元配列は結合できません。AnotherはSelfと同次元か1次元少ない必要があります',
       [Self.DimensionCount, Another.DimensionCount]);
 
-  // ベースインデックスのチェックと取得（すべて一致しないと例外）
-  BaseIndex := Self.GetCompatibleBaseIndex(Another);
+//  // ベースインデックスのチェックと取得（すべて一致しないと例外）
+//  BaseIndex := Self.GetCompatibleBaseIndex(Another);
 
   SelfReady := Self;
   AnotherReady := Another;
 
-  // 1ベース以外は1ベースに正規化
-  if BaseIndex <> 1 then
-  begin
-    SelfReady.ReBase(1);
-    AnotherReady.ReBase(1);
-  end;
+//  // 1ベース以外は1ベースに正規化
+//  if BaseIndex <> 1 then
+//  begin
+//    SelfReady.ReBase(1);
+//    AnotherReady.ReBase(1);
+//  end;
 
   // AnotherReadyの次元をSelfReadyにあわせて拡張
   if DimDiff > 0 then
@@ -1905,9 +1897,9 @@ begin
   // 同一次元結合を実行
   Result := SelfReady.InsertDim(TargetDim, SelfReady.High(TargetDim) + 1, AnotherReady);
 
-  // 元のベースインデックスに戻す
-  if BaseIndex <> 1 then
-    Result.ReBase(BaseIndex);
+//  // 元のベースインデックスに戻す
+//  if BaseIndex <> 1 then
+//    Result.ReBase(BaseIndex);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1941,7 +1933,7 @@ function TFlexArray<T>.AppendArray(const Another: TFlexArray<T>): TFlexArray<T>;
 begin
   CheckDimension(1);
   Another.CheckDimension(1);
-  Result := Self.Concat(Another, 1);
+  Result := Self.AppendArray(Another.FData);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1955,13 +1947,11 @@ var
   AnotherLen: Integer;
 begin
   CheckDimension(1);
-  AnotherLen := System.Length(Another);
-  NewRange := [Self.Low, Self.High + AnotherLen];
-  Result := TFlexArray<T>.CreateFromRange(NewRange);
-
-  // 高速なデータコピー
-  TArray.Copy<T>(Self.FData, Result.FData, 0, 0, Self.FTotalSize);
-  TArray.Copy<T>(Another, Result.FData, 0, Self.FTotalSize, AnotherLen);
+  Result := Default(TFlexArray<T>);
+  Result.FData := Self.FData +  Another;
+  Result.FTotalSize := System.Length(Result.FData);
+  Result.FDims := Copy(Self.FDims);
+  Result.FDims[0].High := Self.Low + Result.FTotalSize - 1;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -2114,7 +2104,6 @@ function TFlexArray<T>.SliceDimIndexesCore(Dim: Integer; const Indexes: TSliceIn
 var
   dmy: TFlexArray<T>;
 begin
-  dmy.FTotalSize := -1;  // マーカー値（抽出専用モード）
   Result := SliceDimIndexesCore(Dim, Indexes, dmy, 0);
 end;
 function TFlexArray<T>.SliceDimIndexesCore(Dim: Integer; const Indexes: TSliceIndexes;
@@ -2137,7 +2126,7 @@ begin
 
   // NewRangesの設定
   NewRanges := Self.GetRanges;
-  if Another.FTotalSize > 0 then
+  if System.Length(Another.FData) > 0 then
     // 対象の次元サイズ = Indexesのサイズ + Anotherのサイズ
     NewRanges[DimIdx] := [TargetDimBaseIdx, TargetDimBaseIdx + Length(Indexes) + Another.Len(Dim) - 1]
   else
@@ -2147,7 +2136,7 @@ begin
   // BaseIndexを対象次元のBaseIndexで統一する
   FlexIndexes := TFlexArray<Integer>.CreateFromArray(TArray<Integer>(Indexes), TargetDimBaseIdx);
   IsAnotherArea := TFlexArray<Boolean>.CreateFromRange(NewRanges[DimIdx]); // デフォルトはFalse
-  if Another.FTotalSize > 0 then
+  if System.Length(Another.FData) > 0 then
   begin
     // BaseIndexを対象次元のBaseIndexで統一する
     MappedIndexes := TFlexArray<Integer>.CreateFromRange(NewRanges[DimIdx]);
@@ -2206,53 +2195,6 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
-// [概要] 配列の各要素を直接変更する（破壊的）
-// [引数] 変換関数（値と座標を引数に取り、新しい値を返す）
-// [戻値] self(メソッドチェーン用)
-// [使用例]   A.Map(function(const Value: Integer; const Coords: TCoords): Integer
-//               begin
-//                 Result := Coords[0] * 1000 + Coords[1];
-//               end);
-//////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.Map(const AFunc: TMapFunc<T>): TFlexArray<T>;
-var
-  i: Integer;
-  CurrentCoords: TCoords;
-begin
-  CheckViewMode;
-  Self.InitializeCoords(CurrentCoords);
-  for i := 0 to FTotalSize - 1 do
-  begin
-    Self.Elements[i] := AFunc(Self.Elements[i], CurrentCoords);
-    Self.IncCoords(CurrentCoords);
-  end;
-  Exit(Self);
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
-// [概要] 配列の各要素を変換して新しい配列を返す（非破壊的）
-// [引数] 変換関数（値と座標を引数に取り、新しい値を返す）
-// [戻値] 変換後の新しい配列
-// [使用例] B := A.Mapped<string>(function(const Value: Integer; const Coords: TCoords): string
-//                 begin
-//                   Result := Coords[0].ToString + '.' + Coords[1].ToString;
-//                 end);
-//////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.Mapped<TResult>(const AFunc: TMappedFunc<T, TResult>): TFlexArray<TResult>;
-var
-  i: Integer;
-  CurrentCoords: TCoords;
-begin
-  Result := TFlexArray<TResult>.CreateFromRange(Self.GetRanges);
-  Result.InitializeCoords(CurrentCoords);
-  for i := 0 to FTotalSize - 1 do
-  begin
-    Result.Elements[i] := AFunc(Self.Elements[i], CurrentCoords);
-    Result.IncCoords(CurrentCoords);
-  end;
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
 // [概要] 配列の要素をフィルタリングして条件に合う要素のみを返す（非破壊的）
 // [引数] フィルタ関数（値と座標を引数に取り、条件を返す）
 // [戻値] 条件に合う要素の配列
@@ -2291,19 +2233,6 @@ begin
   end;
 end;
 
-//////////////////////////////////////////////////////////////////////////////////////
-// [概要] Map用コールバック関数
-//        連番を生成する
-// [引数] Value: 現在値（無視）, Coords: 座標配列
-// [戻値] 座標ベースの連番
-// [使用例] FlexArray.Map(SequentialNumber) → [1, 2, 3, ...]
-//////////////////////////////////////////////////////////////////////////////////////
-function SequentialNumber(const Value: Integer; const Coords: TCoords): Integer;
-begin
-  Result := Coords[0];
-end;
-
-{ TFlexArray<T> }
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] in 演算子のオーバーロード - 指定値が配列に含まれるかチェック
 // [引数] Value: 検索する値, FlexArray: 検索対象の配列
