@@ -82,7 +82,6 @@ type
   private
     FData: TArray<T>;
     FDims: TFlexDimensions;  // 次元情報
-    FTotalSize: Integer;
     FIsView: Boolean;
 
     function GetValue(const Coords: array of Integer): T; overload;
@@ -92,10 +91,11 @@ type
     function GetElement(Index: Integer): T; inline;
     procedure SetElement(Index: Integer; const Value: T); inline;
     function GetDimensionCount: Integer; inline;
+    function GetTotalSize: Integer; inline;
     procedure ValidateTransposeDimensions(const NewDims: array of Integer);
     function GetRanges: TFlexRanges;
     function ValueToStr(const V: T): string;
-    procedure InitializeDimensions(const Ranges: TFlexRanges);
+    function InitializeDimensions(const Ranges: TFlexRanges): Integer;
     procedure CheckDimension(ExpectedDim: Integer);
 //    procedure CheckViewMode;
 //    function GetCompatibleBaseIndex(const Another: TFlexArray<T>): Integer;
@@ -135,7 +135,7 @@ type
     property Items[const Coords: array of Integer]: T read GetValue write SetValue; default;
     property Elements[Index: Integer]: T read GetElement write SetElement;
     property DimensionCount: Integer read GetDimensionCount;
-    property TotalSize: Integer read FTotalSize;
+    property TotalSize: Integer read GetTotalSize;
     property IsView: Boolean read FIsView;
 
     function Reshape(const Shapes: array of Integer; BaseIndex: Integer): TFlexArray<T>;
@@ -514,11 +514,11 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 範囲配列から配列構造を初期化
 // [引数] 各次元の範囲配列
-// [戻値] なし
-// [使用例] InitializeFromRanges([[1, 10], [1, 10]])
+// [戻値] 総要素数
+// [使用例] TotalSize := InitializeFromRanges([[1, 10], [1, 10]])
 // [備考] 各次元の範囲配列は [Low, High] のペアになっていること
 //////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.InitializeDimensions(const Ranges: TFlexRanges);
+function TFlexArray<T>.InitializeDimensions(const Ranges: TFlexRanges): Integer;
 var
   i: Integer;
   CurrentStride: Integer;
@@ -540,7 +540,7 @@ begin
     CurrentStride := CurrentStride * Ranges[i].Len;
   end;
 
-  FTotalSize := CurrentStride;
+  Result := CurrentStride;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -551,8 +551,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 constructor TFlexArray<T>.Create(const Shapes: array of Integer; BaseIndex: Integer);
 begin
-  InitializeDimensions(ShapesToRanges(Shapes, BaseIndex));
-  SetLength(FData, FTotalSize);
+  SetLength(FData, InitializeDimensions(ShapesToRanges(Shapes, BaseIndex)));
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -563,8 +562,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 constructor TFlexArray<T>.CreateFromRange(const Range: TFlexRange);
 begin
-  InitializeDimensions([Range]);
-  SetLength(FData, FTotalSize);
+  SetLength(FData, InitializeDimensions([Range]));
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -576,8 +574,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 constructor TFlexArray<T>.CreateFromRange(const Ranges: TFlexRanges);
 begin
-  InitializeDimensions(Ranges);
-  SetLength(FData, FTotalSize);
+  SetLength(FData, InitializeDimensions(Ranges));
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -588,8 +585,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 constructor TFlexArray<T>.CreateFromRange(const RangeStr: string);
 begin
-  InitializeDimensions(RangesStringToRanges(RangeStr));
-  SetLength(FData, FTotalSize);
+  SetLength(FData, InitializeDimensions(RangesStringToRanges(RangeStr)));
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -600,7 +596,6 @@ end;
 constructor TFlexArray<T>.CreateFromFlexArray(const Src: TFlexArray<T>);
 begin
   FDims := Copy(Src.FDims);
-  FTotalSize := Src.FTotalSize;
   FData := Copy(Src.FData);
 end;
 
@@ -678,14 +673,15 @@ end;
 procedure TFlexArray<T>.ReshapeRange(const Ranges: TFlexRanges);
 var
   oldTotalSize: Integer;
+  newTotalSize: Integer;
 begin
-  oldTotalSize := Self.FTotalSize;
-  InitializeDimensions(Ranges);
+  oldTotalSize := Self.TotalSize;
+  newTotalSize := InitializeDimensions(Ranges);
 
   // サイズのチェック
-  if oldTotalSize <> FTotalSize then
+  if oldTotalSize <> newTotalSize then
     raise Exception.Create(Format(
-      'Reshape: 要素数が一致しません。現在=%d, 新規=%d', [oldTotalSize, FTotalSize]));
+      'Reshape: 要素数が一致しません。現在=%d, 新規=%d', [oldTotalSize, newTotalSize]));
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1119,6 +1115,16 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
+// [概要] 配列の総要素数を取得
+// [引数] なし
+// [戻値] 要素数
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.GetTotalSize: Integer;
+begin
+  Result := System.Length(FData);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
 // [概要] 現在の範囲情報を取得する
 // [引数] なし
 // [戻値] 各次元の範囲配列
@@ -1139,7 +1145,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.GetEnumerator: TFlexArrayEnumerator<T>;
 begin
-  Result := TFlexArrayEnumerator<T>.Create(Self.ToVector, FTotalSize);
+  Result := TFlexArrayEnumerator<T>.Create(Self.ToVector, Self.TotalSize);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1322,7 +1328,7 @@ begin
   SetLength(SelfCoords, Self.DimensionCount);
 
   // Resultの座標イテレーションで、Selfから対応する要素を取得
-  for i := 0 to Result.FTotalSize - 1 do
+  for i := 0 to Result.TotalSize - 1 do
   begin
     // 引数のIndexesをSelfの座標に変換
     for d := 0 to System.High(ResultCoords) do
@@ -1371,7 +1377,7 @@ begin
   Result.InitializeCoords(ResultCoords);
 
   // Resultの座標イテレーションで、Selfからスライス範囲の要素を取得
-  for i := 0 to Result.FTotalSize - 1 do
+  for i := 0 to Result.TotalSize - 1 do
   begin
     Result.FData[i] := Self.ItemAt[ResultCoords];
     Result.IncCoords(ResultCoords);
@@ -1694,7 +1700,7 @@ begin
 
     // FDims入替え後のselfを利用して値を結果に設定
     Self.InitializeCoords(Coords);
-    for i := 0 to Result.FTotalSize - 1 do
+    for i := 0 to Result.TotalSize - 1 do
     begin
       Result.FData[i] := Self.ItemAt[Coords];
       Self.IncCoords(Coords);
@@ -1834,7 +1840,7 @@ begin
   LSelf := Self; // 内部配列をキャプチャ
 
   // インデックス配列を初期化
-  SetLength(Indices, FTotalSize);
+  SetLength(Indices, TotalSize);
   for i := Self.Low to Self.High do
     Indices[i - Self.Low] := i;
 
@@ -1949,9 +1955,8 @@ begin
   CheckDimension(1);
   Result := Default(TFlexArray<T>);
   Result.FData := Self.FData +  Another;
-  Result.FTotalSize := System.Length(Result.FData);
   Result.FDims := Copy(Self.FDims);
-  Result.FDims[0].High := Self.Low + Result.FTotalSize - 1;
+  Result.FDims[0].High := Self.Low + Result.TotalSize - 1;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -2166,7 +2171,7 @@ begin
   Result := TFlexArray<T>.CreateFromRange(NewRanges);
   Result.InitializeCoords(ResultCoords);
 
-  for i := 0 to Result.FTotalSize - 1 do
+  for i := 0 to Result.TotalSize - 1 do
   begin
     bak := ResultCoords[DimIdx];
     ResultCoords[DimIdx] := MappedIndexes[bak];
@@ -2190,7 +2195,7 @@ procedure TFlexArray<T>.Fill(Value: T);
 var
   i: Integer;
 begin
-  for i := 0 to FTotalSize - 1 do
+  for i := 0 to Self.TotalSize - 1 do
     FData[i] := Value;
 end;
 
@@ -2211,7 +2216,7 @@ begin
   // まず結果をカウント
   Count := 0;
   Self.InitializeCoords(CurrentCoords);
-  for i := 0 to FTotalSize - 1 do
+  for i := 0 to Self.TotalSize - 1 do
   begin
     if AFunc(Self.Elements[i], CurrentCoords) then
       Inc(Count);
@@ -2222,7 +2227,7 @@ begin
   SetLength(Result, Count);
   Count := 0;
   Self.InitializeCoords(CurrentCoords);
-  for i := 0 to FTotalSize - 1 do
+  for i := 0 to Self.TotalSize - 1 do
   begin
     if AFunc(Self.Elements[i], CurrentCoords) then
     begin
