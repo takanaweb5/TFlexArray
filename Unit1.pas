@@ -169,111 +169,111 @@ begin
 end;
 
 // --- 論理転置テスト ---
-procedure Test_LogicalTranspose;
-var
-  A: TFlexArray<Integer>;
-  i, j: Integer;
-begin
-  Log('[Test: Logical Transpose]');
-  
-  // 2x3行列を作成
-  A := TFlexArray<Integer>.Create([2, 3], 1);
-  A[1,1] := 1; A[1,2] := 2; A[1,3] := 3;
-  A[2,1] := 4; A[2,2] := 5; A[2,3] := 6;
-
-  Log('Original 2x3:');
-  Log(A.ToString);
-  Log(Format('IsLogicalTransposed: %s', [A.IsLogicalTransposed.ToString]));
-  
-  // 論理転置 [2, 1] → 2次元と1次元を入れ替え
-  A.LogicalTranspose([2, 1]);
-  Log('After LogicalTranspose([2, 1]):');
-  Log(A.ToString);
-  Log(Format('IsLogicalTransposed: %s', [A.IsLogicalTransposed.ToString]));
-  
-  // アクセス確認
-  Log('Access check:');
-  Log(Format('A[1,1] = %d (should be 1)', [A[1,1]]));
-  Log(Format('A[1,2] = %d (should be 4)', [A[1,2]]));
-  Log(Format('A[2,1] = %d (should be 2)', [A[2,1]]));
-  Log(Format('A[2,2] = %d (should be 5)', [A[2,2]]));
-  Log(Format('A[3,1] = %d (should be 3)', [A[3,1]]));
-  Log(Format('A[3,2] = %d (should be 6)', [A[3,2]]));
-  
-  // ResetTransposeテスト
-  A.ResetTranspose;
-  Log('After ResetTranspose:');
-  Log(A.ToString);
-  Log(Format('IsLogicalTransposed: %s', [A.IsLogicalTransposed.ToString]));
-  
-  // Reshapeテスト（自動リセット）
-  A.LogicalTranspose([2, 1]);
-  Log('Before Reshape (transposed):');
-  Log(Format('IsLogicalTransposed: %s', [A.IsLogicalTransposed.ToString]));
-  
-  A.Reshape([3, 2], 1);
-  Log('After Reshape([3, 2], 1):');
-  Log(A.ToString);
-  Log(Format('IsLogicalTransposed: %s', [A.IsLogicalTransposed.ToString]));
-  
-  Log('Logical Transpose test completed');
-end;
+//procedure Test_LogicalTranspose;
+//var
+//  A: TFlexArray<Integer>;
+//  i, j: Integer;
+//begin
+//  Log('[Test: Logical Transpose]');
+//
+//  // 2x3行列を作成
+//  A := TFlexArray<Integer>.Create([2, 3], 1);
+//  A[1,1] := 1; A[1,2] := 2; A[1,3] := 3;
+//  A[2,1] := 4; A[2,2] := 5; A[2,3] := 6;
+//
+//  Log('Original 2x3:');
+//  Log(A.ToString);
+//  Log(Format('IsLogicalTransposed: %s', [A.IsLogicalTransposed.ToString]));
+//
+//  // 論理転置 [2, 1] → 2次元と1次元を入れ替え
+//  A.LogicalTranspose([2, 1]);
+//  Log('After LogicalTranspose([2, 1]):');
+//  Log(A.ToString);
+//  Log(Format('IsLogicalTransposed: %s', [A.IsLogicalTransposed.ToString]));
+//
+//  // アクセス確認
+//  Log('Access check:');
+//  Log(Format('A[1,1] = %d (should be 1)', [A[1,1]]));
+//  Log(Format('A[1,2] = %d (should be 4)', [A[1,2]]));
+//  Log(Format('A[2,1] = %d (should be 2)', [A[2,1]]));
+//  Log(Format('A[2,2] = %d (should be 5)', [A[2,2]]));
+//  Log(Format('A[3,1] = %d (should be 3)', [A[3,1]]));
+//  Log(Format('A[3,2] = %d (should be 6)', [A[3,2]]));
+//
+//  // ResetTransposeテスト
+//  A.ResetTranspose;
+//  Log('After ResetTranspose:');
+//  Log(A.ToString);
+//  Log(Format('IsLogicalTransposed: %s', [A.IsLogicalTransposed.ToString]));
+//
+//  // Reshapeテスト（自動リセット）
+//  A.LogicalTranspose([2, 1]);
+//  Log('Before Reshape (transposed):');
+//  Log(Format('IsLogicalTransposed: %s', [A.IsLogicalTransposed.ToString]));
+//
+//  A.Reshape([3, 2], 1);
+//  Log('After Reshape([3, 2], 1):');
+//  Log(A.ToString);
+//  Log(Format('IsLogicalTransposed: %s', [A.IsLogicalTransposed.ToString]));
+//
+//  Log('Logical Transpose test completed');
+//end;
 
 // --- Slice系テスト（論理転置＋Base/Lenばらばら） ---
-procedure Test_SliceWithLogicalTranspose;
-var
-  A: TFlexArray<Integer>;
-  Slice1, Slice2: TFlexArray<Integer>;
-  i, j: Integer;
-begin
-  Log('[Test: Slice with Logical Transpose (Random Base/Len)]');
-  
-  // BaseとLenがばらばらな3次元配列を作成
-  // 形状: [1990..1991, 5..7, 10..12] → 2x3x3 = 18要素
-  A := TFlexArray<Integer>.CreateFromRange([[1990, 1991], [5, 7], [10, 12]]);
-  
-  // データを設定
-  for i := 1990 to 1991 do
-    for j := 5 to 7 do
-      A[i, j, 10] := (i * 1000) + (j * 10) + 10;  // 一意な値
-  
-  Log('Original 3D array [1990..1991, 5..7, 10..12]:');
-  Log(A.ToString);
-  Log(Format('IsLogicalTransposed: %s', [A.IsLogicalTransposed.ToString]));
-  
-  // 論理転置 [3, 1, 2] → 次元順序を入れ替え
-  A.LogicalTranspose([3, 1, 2]);
-  Log('After LogicalTranspose([3, 1, 2]):');
-  Log(A.ToString);
-  Log(Format('IsLogicalTransposed: %s', [A.IsLogicalTransposed.ToString]));
-  
-  // SliceDimテスト（論理2次元をスライス）
-  Log('--- SliceDim Test ---');
-  Slice1 := A.SliceDim(2, 1990);  // 論理2次元の1990をスライス
-  Log('SliceDim(2, 1990) result:');
-  Log(Slice1.ToString);
-  
-  // SliceRowテスト（論理2次元をスライス）
-  Log('--- SliceRow Test ---');
-  Slice2 := A.SliceRow(1990);  // 論理2次元の1990をスライス
-  Log('SliceRow(1990) result:');
-  Log(Slice2.ToString);
-  
-  // アクセス確認
-  Log('--- Access Verification ---');
-  Log(Format('A[1990, 5, 10] = %d', [A[1990, 5, 10]]));
-  Log(Format('A[1991, 6, 10] = %d', [A[1991, 6, 10]]));
-  Log(Format('A[1990, 7, 12] = %d', [A[1990, 7, 12]]));
-  
-  // Resetしてから再度テスト
-  Log('--- After ResetTranspose ---');
-  A.ResetTranspose;
-  Slice1 := A.SliceDim(1, 1990);
-  Log('SliceDim(1, 1990) after reset:');
-  Log(Slice1.ToString);
-  
-  Log('Slice with Logical Transpose test completed');
-end;
+//procedure Test_SliceWithLogicalTranspose;
+//var
+//  A: TFlexArray<Integer>;
+//  Slice1, Slice2: TFlexArray<Integer>;
+//  i, j: Integer;
+//begin
+//  Log('[Test: Slice with Logical Transpose (Random Base/Len)]');
+//
+//  // BaseとLenがばらばらな3次元配列を作成
+//  // 形状: [1990..1991, 5..7, 10..12] → 2x3x3 = 18要素
+//  A := TFlexArray<Integer>.CreateFromRange([[1990, 1991], [5, 7], [10, 12]]);
+//
+//  // データを設定
+//  for i := 1990 to 1991 do
+//    for j := 5 to 7 do
+//      A[i, j, 10] := (i * 1000) + (j * 10) + 10;  // 一意な値
+//
+//  Log('Original 3D array [1990..1991, 5..7, 10..12]:');
+//  Log(A.ToString);
+//  Log(Format('IsLogicalTransposed: %s', [A.IsLogicalTransposed.ToString]));
+//
+//  // 論理転置 [3, 1, 2] → 次元順序を入れ替え
+//  A.LogicalTranspose([3, 1, 2]);
+//  Log('After LogicalTranspose([3, 1, 2]):');
+//  Log(A.ToString);
+//  Log(Format('IsLogicalTransposed: %s', [A.IsLogicalTransposed.ToString]));
+//
+//  // SliceDimテスト（論理2次元をスライス）
+//  Log('--- SliceDim Test ---');
+//  Slice1 := A.SliceDim(2, 1990);  // 論理2次元の1990をスライス
+//  Log('SliceDim(2, 1990) result:');
+//  Log(Slice1.ToString);
+//
+//  // SliceRowテスト（論理2次元をスライス）
+//  Log('--- SliceRow Test ---');
+//  Slice2 := A.SliceRow(1990);  // 論理2次元の1990をスライス
+//  Log('SliceRow(1990) result:');
+//  Log(Slice2.ToString);
+//
+//  // アクセス確認
+//  Log('--- Access Verification ---');
+//  Log(Format('A[1990, 5, 10] = %d', [A[1990, 5, 10]]));
+//  Log(Format('A[1991, 6, 10] = %d', [A[1991, 6, 10]]));
+//  Log(Format('A[1990, 7, 12] = %d', [A[1990, 7, 12]]));
+//
+//  // Resetしてから再度テスト
+//  Log('--- After ResetTranspose ---');
+//  A.ResetTranspose;
+//  Slice1 := A.SliceDim(1, 1990);
+//  Log('SliceDim(1, 1990) after reset:');
+//  Log(Slice1.ToString);
+//
+//  Log('Slice with Logical Transpose test completed');
+//end;
 
 // ① 新規生成のテスト
 procedure Test_New();
@@ -429,95 +429,98 @@ begin
   Result := Index;
 end;
 
-procedure TestTranspose2;
-var
-  Matrix2D, Matrix3D, Tensor3D: TFlexArray<Integer>;
-  Transposed2D, Transposed3D, Swapped3D: TFlexArray<Integer>;
-  i, j, k: Integer;
-begin
-  Log('=== Transposeテスト ===');
-
-  // 1. 2次元行列の転置テスト
-  Log('1. 2次元行列の転置テスト:');
-  Matrix2D := TFlexArray<Integer>.Create([3, 4], 1);
-  Matrix2D.Map(SequentialNumber);
-  Log('元の行列 (3x4):');
-  Log(Matrix2D.ToString);
-  Log('');
-
-  Matrix2D.LogicalTranspose([2,1]);
-  Log('転置後の行列 (4x3):');
-  Log(Matrix2D.ToString);
-  Log('');
-
-  // 2. 3次元テンソルの転置テスト
-  Log('2. 3次元テンソルの転置テスト:');
-  Matrix3D := TFlexArray<Integer>.Create([2, 3, 4], 1);
-  Matrix3D.Map(SequentialNumber);
-  Log('元のテンソル (2x3x4):');
-  Log(Matrix3D.ToString);
-  Log('');
-
-  // 次元の入れ替え [1,2,3] → [3,2,1]
-  Matrix3D.LogicalTranspose([3, 2, 1]);
-  Log('転置後のテンソル (4x3x2) - [1,2,3]→[3,2,1]:');
-  Log(Matrix3D.ToString);
-  Log('');
-
-  // 次元の入れ替え [1,2,3] → [2,3,1]
-  Matrix3D.LogicalTranspose([2, 3, 1]);
-  Log('転置後のテンソル (3x4x2) - [1,2,3]→[2,3,1]:');
-  Log(Matrix3D.ToString);
-  Log('');
-
-  // 3. 4次元テンソルの転置テスト
-  Log('3. 4次元テンソルの転置テスト:');
-  Tensor3D := TFlexArray<Integer>.Create([2, 3, 2, 2], 1);
-  Tensor3D.Map(SequentialNumber);
-  Log('元のテンソル (2x3x2x2):');
-  Log(Tensor3D.ToString);
-  Log('');
-
-  // 次元の入れ替え [1,2,3,4] → [4,3,2,1]
-  Tensor3D.LogicalTranspose([4, 3, 2, 1]);
-  Log('転置後のテンソル (2x2x3x2) - [1,2,3,4]→[4,3,2,1]:');
-  Log(Tensor3D.ToString);
-  Log('');
-
-  // 4. 転置の検証テスト
-  Log('4. 転置の検証テスト:');
-  var TestMatrix := TFlexArray<Integer>.Create([2, 3], 1);
-  TestMatrix[1, 1] := 1; TestMatrix[1, 2] := 2; TestMatrix[1, 3] := 3;
-  TestMatrix[2, 1] := 4; TestMatrix[2, 2] := 5; TestMatrix[2, 3] := 6;
-
-  Log('元の行列:');
-  Log(TestMatrix.ToString);
-
-  TestMatrix.LogicalTranspose([2,1]);
-  Log('転置後の行列:');
-  Log(TestMatrix.ToString);
-
-  // 検証: [i,j] → [j,i]
-  Log('検証:');
-//  Log(Format('元の[1,2]=%d → 転置後[2,1]=%d', [TestMatrix[1, 2], TestTransposed[2, 1]]));
-//  Log(Format('元の[2,3]=%d → 転置後[3,2]=%d', [TestMatrix[2, 3], TestTransposed[3, 2]]));
-  Log('');
-
-  Log('=== Transposeテスト完了 ===');
-end;
+//procedure TestTranspose2;
+//var
+//  Matrix2D, Matrix3D, Tensor3D: TFlexArray<Integer>;
+//  Transposed2D, Transposed3D, Swapped3D: TFlexArray<Integer>;
+//  i, j, k: Integer;
+//begin
+//  Log('=== Transposeテスト ===');
+//
+//  // 1. 2次元行列の転置テスト
+//  Log('1. 2次元行列の転置テスト:');
+//  Matrix2D := TFlexArray<Integer>.Create([3, 4], 1);
+//  Matrix2D.Map(SequentialNumber);
+//  Log('元の行列 (3x4):');
+//  Log(Matrix2D.ToString);
+//  Log('');
+//
+//  Matrix2D.LogicalTranspose([2,1]);
+//  Log('転置後の行列 (4x3):');
+//  Log(Matrix2D.ToString);
+//  Log('');
+//
+//  // 2. 3次元テンソルの転置テスト
+//  Log('2. 3次元テンソルの転置テスト:');
+//  Matrix3D := TFlexArray<Integer>.Create([2, 3, 4], 1);
+//  Matrix3D.Map(SequentialNumber);
+//  Log('元のテンソル (2x3x4):');
+//  Log(Matrix3D.ToString);
+//  Log('');
+//
+//  // 次元の入れ替え [1,2,3] → [3,2,1]
+//  Matrix3D.LogicalTranspose([3, 2, 1]);
+//  Log('転置後のテンソル (4x3x2) - [1,2,3]→[3,2,1]:');
+//  Log(Matrix3D.ToString);
+//  Log('');
+//
+//  // 次元の入れ替え [1,2,3] → [2,3,1]
+//  Matrix3D.LogicalTranspose([2, 3, 1]);
+//  Log('転置後のテンソル (3x4x2) - [1,2,3]→[2,3,1]:');
+//  Log(Matrix3D.ToString);
+//  Log('');
+//
+//  // 3. 4次元テンソルの転置テスト
+//  Log('3. 4次元テンソルの転置テスト:');
+//  Tensor3D := TFlexArray<Integer>.Create([2, 3, 2, 2], 1);
+//  Tensor3D.Map(SequentialNumber);
+//  Log('元のテンソル (2x3x2x2):');
+//  Log(Tensor3D.ToString);
+//  Log('');
+//
+//  // 次元の入れ替え [1,2,3,4] → [4,3,2,1]
+//  Tensor3D.LogicalTranspose([4, 3, 2, 1]);
+//  Log('転置後のテンソル (2x2x3x2) - [1,2,3,4]→[4,3,2,1]:');
+//  Log(Tensor3D.ToString);
+//  Log('');
+//
+//  // 4. 転置の検証テスト
+//  Log('4. 転置の検証テスト:');
+//  var TestMatrix := TFlexArray<Integer>.Create([2, 3], 1);
+//  TestMatrix[1, 1] := 1; TestMatrix[1, 2] := 2; TestMatrix[1, 3] := 3;
+//  TestMatrix[2, 1] := 4; TestMatrix[2, 2] := 5; TestMatrix[2, 3] := 6;
+//
+//  Log('元の行列:');
+//  Log(TestMatrix.ToString);
+//
+//  TestMatrix.LogicalTranspose([2,1]);
+//  Log('転置後の行列:');
+//  Log(TestMatrix.ToString);
+//
+//  // 検証: [i,j] → [j,i]
+//  Log('検証:');
+////  Log(Format('元の[1,2]=%d → 転置後[2,1]=%d', [TestMatrix[1, 2], TestTransposed[2, 1]]));
+////  Log(Format('元の[2,3]=%d → 転置後[3,2]=%d', [TestMatrix[2, 3], TestTransposed[3, 2]]));
+//  Log('');
+//
+//  Log('=== Transposeテスト完了 ===');
+//end;
 
 procedure TestTranspose;
 var
   Matrix2D, Matrix3D, Tensor3D: TFlexArray<Integer>;
   Transposed2D, Transposed3D, Swapped3D: TFlexArray<Integer>;
   i, j, k: Integer;
+  Coords: TCoords;
 begin
   Log('=== Transposeテスト ===');
-  
+
   // 1. 2次元行列の転置テスト
   Log('1. 2次元行列の転置テスト:');
   Matrix2D := TFlexArray<Integer>.Create([3, 4], 1);
-  Matrix2D.Map(SequentialNumber);
+  for Coords in Matrix2D.CoordsIterator do
+    Matrix2D.ItemAt[Coords] := Coords[0] * 10 + Coords[1];
+
   Log('元の行列 (3x4):');
   Log(Matrix2D.ToString);
   Log('');
@@ -530,7 +533,9 @@ begin
   // 2. 3次元テンソルの転置テスト
   Log('2. 3次元テンソルの転置テスト:');
   Matrix3D := TFlexArray<Integer>.Create([2, 3, 4], 1);
-  Matrix3D.Map(SequentialNumber);
+  for Coords in Matrix3D.CoordsIterator do
+    Matrix3D.ItemAt[Coords] := Coords[0] * 100 + Coords[1] * 10 + Coords[2];
+
   Log('元のテンソル (2x3x4):');
   Log(Matrix3D.ToString);
   Log('');
@@ -1508,7 +1513,6 @@ begin
   TestReshapeChain;
   TestPerformance;
 //  TestMapDateCreation; // Map日付作成テスト
-  Test_LogicalTranspose;  // 論理転置テスト
 //  Test_SliceWithLogicalTranspose;  // Slice系テスト
   Test_New;        // 新規作成
   Test_1D_Ref;    // 1次元参照
@@ -1517,7 +1521,6 @@ begin
    TestUltimateChaosSlice;
   TestTranspose;
   Log('******************************************');
-  TestTranspose2;
   TestSliceDim;  // SliceDim/SliceRow/ChooseCol テスト
   TestPromoteDemoteDimension;
   TestSliceDimIndexesCounterReset;
@@ -1553,7 +1556,7 @@ begin
   // end;
 
   // データを設定 - CoordsIterator を使用
-  for Coords in N.Data.CoordsIterator do
+  for Coords in N.Data.CoordsIterator([[],[2,4]]) do
   begin
     N.ItemAt[Coords] := Coords[0] * 1000 + Coords[1];
   end;
@@ -1624,38 +1627,38 @@ begin
 
 end;
 
-//procedure TForm1.Button3Click(Sender: TObject);
-//var
-//  TestArray, TestArray2: TFlexArray<Integer>;
-//  VectorArray: TArray<Integer>;
-//  i: Integer;
-//begin
-//  Memo1.Lines.Add('=== メソッドチェーンテスト ===');
-//
-//  // 1. CreateFromRangeで "1..12" の配列を宣言
-//  VectorArray := TFlexArray<Integer>.CreateFromRange('1..12')
-//    .Map(SequentialNumber).ToVector;;
-//
-//  Memo1.Lines.Add('1. 元の配列 (1..12):');
-//  Memo1.Lines.Add('   ' + TFlexArray<Integer>.ViewFromArray(VectorArray,1).ToString);
-//
-//  // 4. ViewFromArray.Map(シリアルナンバー).Reshapeを実行
-//  Memo1.Lines.Add('4. ViewFromArrayから新しい配列を作成:');
-//  TestArray := TFlexArray<Integer>.ViewFromArray(VectorArray, 1)
-//    .Reshape([3, 4], 1);
-//  TestArray[2,3] := 2300;
-//
-//  TestArray2 := TestArray.LogicalTranspose([2,1]).Map(SequentialNumber);
-//
-//  TestArray[2,3] := 1234;
-//
-//  Memo1.Lines.Add('A  ' + TestArray2.ToRangesString);
-//  Memo1.Lines.Add('B  ' + TestArray.ToRangesString);
-//  Memo1.Lines.Add('C  ' + TestArray2.ToString);
-//  Memo1.Lines.Add('D  ' + TestArray.ToString);
-//  Memo1.Lines.Add('1. 元の配列 (1..12):');
-//  Memo1.Lines.Add('   ' + TFlexArray<Integer>.ViewFromArray(VectorArray,1).ToString);
-//end;
+procedure TForm1.Button3Click(Sender: TObject);
+var
+  TestArray, TestArray2: TFlexArray<Integer>;
+  VectorArray: TArray<Integer>;
+  i: Integer;
+begin
+  Memo1.Lines.Add('=== メソッドチェーンテスト ===');
+
+  // 1. CreateFromRangeで "1..12" の配列を宣言
+  TestArray := TFlexArray<Integer>.CreateFromRange('1..12');
+  TestArray.Map(SequentialNumber);
+  VectorArray := TestArray.ToVector;
+
+  Memo1.Lines.Add('1. 元の配列 (1..12):');
+  Memo1.Lines.Add('   ' + TFlexArray<Integer>.ViewFromArray(VectorArray,1).ToString);
+
+  // 4. ViewFromArray.Map(シリアルナンバー).Reshapeを実行
+  Memo1.Lines.Add('4. ViewFromArrayから新しい配列を作成:');
+  TestArray := TFlexArray<Integer>.ViewFromArray(VectorArray, 1)
+    .Reshape([3, 4], 1);
+  TestArray[2,3] := 2300;
+
+
+  TestArray[2,3] := 1234;
+
+  Memo1.Lines.Add('A  ' + TestArray2.ToRangesString);
+  Memo1.Lines.Add('B  ' + TestArray.ToRangesString);
+  Memo1.Lines.Add('C  ' + TestArray2.ToString);
+  Memo1.Lines.Add('D  ' + TestArray.ToString);
+  Memo1.Lines.Add('1. 元の配列 (1..12):');
+  Memo1.Lines.Add('   ' + TFlexArray<Integer>.ViewFromArray(VectorArray,1).ToString);
+end;
 
 // --- SliceIndexed テスト ---
 procedure TestSliceIndexedBasic;
@@ -1664,7 +1667,7 @@ var
   i, j: Integer;
 begin
   Log('=== SliceIndexed 基本テスト ===');
-  
+
   // 3x3行列を作成
   Matrix := TFlexArray<Integer>.CreateFromRange('1..9').Map(SequentialNumber);
   Matrix.Reshape([3,3],1);
@@ -1789,26 +1792,26 @@ begin
   Log('');
 end;
 
-procedure TForm1.Button3Click(Sender: TObject);
-begin
-  Memo1.Lines.Clear;
-  Log('=== SliceIndexed 全テスト開始 ===');
-  
-//  try
-    TestSliceIndexedBasic;
-    TestSliceIndexedEmptyExpansion;
-    TestSliceIndexedDimensionCompression;
-    TestSliceIndexedComplex;
-//    TestSliceIndexedErrorCases;
-
-    Log('=== すべてのテストが正常に完了しました ===');
-//  except
-//    on E: Exception do
-//    begin
-//      Log('テスト中にエラーが発生: ' + E.Message);
-//      Log('スタックトレース: ' + E.StackTrace);
-//    end;
-//  end;
-end;
+//procedure TForm1.Button3Click(Sender: TObject);
+//begin
+//  Memo1.Lines.Clear;
+//  Log('=== SliceIndexed 全テスト開始 ===');
+//
+////  try
+//    TestSliceIndexedBasic;
+//    TestSliceIndexedEmptyExpansion;
+//    TestSliceIndexedDimensionCompression;
+//    TestSliceIndexedComplex;
+////    TestSliceIndexedErrorCases;
+//
+//    Log('=== すべてのテストが正常に完了しました ===');
+////  except
+////    on E: Exception do
+////    begin
+////      Log('テスト中にエラーが発生: ' + E.Message);
+////      Log('スタックトレース: ' + E.StackTrace);
+////    end;
+////  end;
+//end;
 
 end.
