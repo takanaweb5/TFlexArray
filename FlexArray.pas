@@ -138,7 +138,7 @@ type
     property TotalSize: Integer read GetTotalSize;
     property IsView: Boolean read FIsView;
 
-    function Reshape(const Shapes: array of Integer; BaseIndex: Integer = 0): TFlexArray<T>;
+    procedure Reshape(const Shapes: array of Integer; BaseIndex: Integer = 0);
     procedure ReshapeRange(const Range: TFlexRange); overload; // 1D
     procedure ReshapeRange(const Ranges: TFlexRanges); overload; // nD
     procedure ReshapeRange(const RangeStr: string); overload;
@@ -462,16 +462,7 @@ begin
   for d := System.High(Coords) downto 0 do
   begin
     Inc(Coords[d]);
-
-    // 上限を超えていないなら終了
-    if Coords[d] <= FRanges[d].High then
-    begin
-      Result := False;  // 1周していない
-      Exit;
-    end;
-
-    // 上限を超えたので、現在の次元を最小値(Low)にリセットし、
-    // ループを継続して一つ左の次元（上位桁）を Inc する
+    if Coords[d] <= FRanges[d].High then Exit(False);
     Coords[d] := FRanges[d].Low;
   end;
 
@@ -638,10 +629,9 @@ end;
 // [戻値] self(メソッドチェーン用)
 // [使用例] Matrix.Reshape([3, 2], 1)  // 1始まりの3x2行列に再定義
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.Reshape(const Shapes: array of Integer; BaseIndex: Integer = 0): TFlexArray<T>;
+procedure TFlexArray<T>.Reshape(const Shapes: array of Integer; BaseIndex: Integer = 0);
 begin
   ReshapeRange(ShapesToRanges(Shapes, BaseIndex));
-  Exit(Self);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1192,14 +1182,9 @@ begin
     Inc(Coords[d]);
 
     // 上限を超えていないなら終了
-    if Coords[d] <= Self.FDims[d].High then
-    begin
-      Result := False;  // 1周していない
-      Exit;
-    end;
+    if Coords[d] <= Self.FDims[d].High then Exit(False);
 
-    // 上限を超えたので、現在の次元を最小値(Low)にリセットし、
-    // ループを継続して一つ左の次元（上位桁）を Inc する
+    // 繰り上がり
     Coords[d] := Self.FDims[d].Low;
   end;
 
