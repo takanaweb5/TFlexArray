@@ -1151,8 +1151,9 @@ end;
 // [戻値] TCoordsIterator オブジェクト
 // [使用例] for Coords in N.CoordsIterator do
 //            N.ItemAt[Coords] := Coords[0] * 10 + Coords[1];
-//          for Coords in N.CoordsIterator([[1, 2], [1, 3]]) do  // 部分範囲
-//            N.ItemAt[Coords] := Coords[0] * 10 + Coords[1];
+//          for Coords in N.CoordsIterator([[2], [1, 3], []]) do  // 部分範囲
+//            N.ItemAt[Coords] := Coords[0] * 100 + Coords[1] * 10 + Coords[2];
+// [備考] イテレータで戻されるCoordsは0ベース（0-base）です
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.CoordsIterator(Ranges: TFlexRanges = nil): TCoordsIterator;
 begin
@@ -1175,7 +1176,7 @@ end;
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 座標をインクリメント
-// [引数] Coords: 現在の座標配列
+// [引数] Coords: 現在の座標配列 0base
 // [戻値] 1周した場合にtrue、それ以外はfalse
 // [備考] 2次元配列 [1..3, 1..2] の場合:
 //        [1,1] → [1,2] → [2,1] → [2,2] → [3,1] → [3,2] → [1,1](true)
@@ -2211,6 +2212,7 @@ begin
   Index := TArray.IndexOf<T>(Self.FData, Value);
   // Index := Self.IndexOfElements(Value);
 
+  Result := [];
   if Index >= 0 then
     Result := Self.GetCoords(Index);
 end;
