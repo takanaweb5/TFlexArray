@@ -47,22 +47,21 @@ type
     class function FromArray(const Coords: array of Integer): TCoords; static;
   end;
 
-  // for in 用列挙子
-  TFlexArrayEnumerator<T> = class
-  private
-    FData: TArray<T>;
-    FTotalSize: Integer;
-    FIndex: Integer;
-    function GetCurrent: T;
-  public
-    constructor Create(const AData: TArray<T>; Size: Integer);
-    property Current: T read GetCurrent;
-    function MoveNext: Boolean;
-  end;
-
-type
+  type
   TFlexArray<T> = record
   type
+    // for in 用列挙子
+    TFlexArrayEnumerator<T> = class
+    private
+      FData: TArray<T>;
+      FIndex: Integer;
+      function GetCurrent: T;
+    public
+      constructor Create(const AData: TArray<T>);
+      property Current: T read GetCurrent;
+      function MoveNext: Boolean;
+    end;
+
     TCoordsIterator = class
     private
       FData: Pointer;
@@ -107,7 +106,6 @@ type
     function DeleteDimCore(Dim: Integer; const Range: TFlexRange): TFlexArray<T>;
     function SliceCore(const Ranges: TFlexRanges): TFlexArray<T>;
     function SliceIndexedCore(const Indexes: TArray<TSliceIndexes>; BaseIndex: Integer = 0): TFlexArray<T>;
-    function GetEnumerator: TFlexArrayEnumerator<T>;
 
   public
     constructor Create(const Shapes: array of Integer; BaseIndex: Integer = 0); overload; // nD
@@ -209,6 +207,9 @@ type
 
     // 座標イテレータ - for Coords in FlexArray.CoordsIterator do
     function CoordsIterator(Ranges: TFlexRanges = nil): TCoordsIterator;
+    
+    // for-in ループ用列挙子
+    function GetEnumerator: TFlexArrayEnumerator<T>;
   end;
 
 implementation
@@ -374,10 +375,9 @@ end;
 // [引数] データの先頭ポインタ, 全要素数
 // [戻値] なし
 //////////////////////////////////////////////////////////////////////////////////////
-constructor TFlexArrayEnumerator<T>.Create(const AData: TArray<T>; Size: Integer);
+constructor TFlexArray<T>.TFlexArrayEnumerator<T>.Create(const AData: TArray<T>);
 begin
   FData := AData;
-  FTotalSize := Size;
   FIndex := -1;
 end;
 
@@ -386,7 +386,7 @@ end;
 // [引数] なし
 // [戻値] 現在の要素
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArrayEnumerator<T>.GetCurrent: T;
+function TFlexArray<T>.TFlexArrayEnumerator<T>.GetCurrent: T;
 begin
   Result := FData[FIndex];
 end;
@@ -396,12 +396,11 @@ end;
 // [引数] なし
 // [戻値] 次の要素が存在するかどうか
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArrayEnumerator<T>.MoveNext: Boolean;
+function TFlexArray<T>.TFlexArrayEnumerator<T>.MoveNext: Boolean;
 begin
   Inc(FIndex);
-  Result := FIndex < FTotalSize;
+  Result := FIndex < System.Length(FData);
 end;
-
 
 { TCoordsIterator }
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1128,7 +1127,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.GetEnumerator: TFlexArrayEnumerator<T>;
 begin
-  Result := TFlexArrayEnumerator<T>.Create(Self.ToVector, Self.TotalSize);
+  Result := TFlexArrayEnumerator<T>.Create(Self.FData);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
