@@ -19,9 +19,8 @@ type
   TFlexDimensionsHelper = record helper for TFlexDimensions
   private
     function GetDimension(Index: Integer): TFlexDimension; inline;
-    procedure SetDimension(Index: Integer; const Value: TFlexDimension); inline;
   public
-    property Items[Index: Integer]: TFlexDimension read GetDimension write SetDimension;
+    property Items[Index: Integer]: TFlexDimension read GetDimension;
   end;
 
   TFlexRange = array of Integer;  // [Low, High] のペア
@@ -365,17 +364,6 @@ function TFlexDimensionsHelper.GetDimension(Index: Integer): TFlexDimension;
 begin
   Result := Self[Index - 1];  // 1base → 0base
 //  Result := Self[Self[Index - 1].RealIndex];  // 1base → 0base & 論理転置
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
-// [概要] 指定次元の情報を設定（1-based）
-// [引数] 次元番号（1-based）, 次元情報
-// [戻値] なし
-//////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexDimensionsHelper.SetDimension(Index: Integer; const Value: TFlexDimension);
-begin
-  Self[Index - 1] := Value;  // 1base → 0base
-//  Self[Self[Index - 1].RealIndex] := Value;  // 1base → 0base & 論理転置
 end;
 
 { TFlexArrayEnumerator<T> }
@@ -1315,6 +1303,9 @@ end;
 // [使用例] NewArr := arr.Slice([[1, 5], [2, 8], [], [3]]);
 //         NumPyの arr[1:5, 2:8, :, 3] に相当
 //         Juliaの arr[1:5, 2:8, :, 3] に相当
+// [備考] 実行後の各次元の[Low,High]は引数の[[L,H], [L,H]]]がそのまま適用される
+//        []の次元は元の次元の[Low,High]がそのまま適用される
+//        [4]のように要素数が1の次元は潰される
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.Slice(Ranges: TFlexRanges): TFlexArray<T>;
 var
@@ -1335,7 +1326,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] すべての次元でインデックス配列を指定して要素を抽出
 // [引数] Indexes - 各次元のインデックス配列（空配列は全範囲指定）
-//       BaseIndex - ベースインデックス
+//       BaseIndex - ベースインデックス（実行後すべての次元に適用される）
 // [戻値] 抽出された配列
 // [使用例] result := arr.SliceIndexed([[1,2,3], [], [4]])
 //         NumPyの arr[[1,2,3], :, 4] に相当
@@ -2111,7 +2102,7 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
-// [概要] 1次元配列の要素をソートするためのインデックス配列を返す
+// [概要] 1次元配列をソートした場合のインデックス配列を返す
 // [引数] Ascending: True=昇順, False=降順 (デフォルト=True)
 // [戻値] ソート後のインデックス配列
 // [使用例]
@@ -2220,11 +2211,8 @@ end;
 // [使用例] idx := arr.IndexOf(20);
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.IndexOfElements(const Value: T): Integer;
-var
-  Index: Integer;
 begin
-  Index := TArray.IndexOf<T>(Self.Data.FArray, Value);
-  Result := Index;
+  Result := TArray.IndexOf<T>(Self.Data.FArray, Value);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -2237,10 +2225,8 @@ function TFlexArray<T>.IndexOfCoords(const Value: T): TCoords;
 var
   Index: Integer;
 begin
-  Index := TArray.IndexOf<T>(Self.Data.FArray, Value);
-  // Index := Self.IndexOfElements(Value);
-
   Result := [];
+  Index := TArray.IndexOf<T>(Self.Data.FArray, Value);
   if Index >= 0 then
     Result := Self.GetCoords(Index);
 end;
