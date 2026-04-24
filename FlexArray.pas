@@ -50,6 +50,7 @@ type
   type
   TFlexArray<T> = record
   type
+
     // for in 用列挙子
     TFlexArrayEnumerator<T> = class
     private
@@ -62,15 +63,15 @@ type
       function MoveNext: Boolean;
     end;
 
+    // 座標イテレータ
     TCoordsIterator = class
     private
-      FArray: Pointer;
       FRanges: TFlexRanges;
       FCoords: TCoords;
       function GetCurrent: TCoords;
       function IncCoords(var Coords: TCoords): Boolean;
     public
-      constructor Create(const Parent: Pointer; Ranges: TFlexRanges);
+      constructor Create(const Dims: TFlexDimensions; Ranges: TFlexRanges);
       function MoveNext: Boolean;
       property Current: TCoords read GetCurrent;
       function GetEnumerator: TCoordsIterator;
@@ -79,6 +80,7 @@ type
     // Filter用コールバック
     TFilterFunc<T> = reference to function(const Value: T; const Coords: TCoords): Boolean;
 
+    // スマートポインタを実現するためにすべての内部データを管理
     TData = class(TInterfacedObject)
       FArray: TArray<T>;
       FDims: TFlexDimensions;  // 次元情報
@@ -88,8 +90,7 @@ type
   private
     FData: TData;     // データ本体
     FRef: IInterface; // 寿命管理（スマートポインタ代わり）
-
-    function Data: TData;
+    function Data: TData; // 内部データへのアクセサ
 
     function GetValue(const Coords: array of Integer): T; overload;
     procedure SetValue(const Coords: array of Integer; const Value: T); overload;
@@ -413,38 +414,45 @@ end;
 { TCoordsIterator }
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 座標列挙子を初期化
-// [引数] 親配列のポインタ
+// [引数] 親の次元情報, 座標範囲
 // [戻値] なし
 //////////////////////////////////////////////////////////////////////////////////////
-constructor TFlexArray<T>.TCoordsIterator.Create(const Parent: Pointer; Ranges: TFlexRanges);
+constructor TFlexArray<T>.TCoordsIterator.Create(const Dims: TFlexDimensions; Ranges: TFlexRanges);
 var
   i: Integer;
-  ParentArray: TFlexArray<T>;
+  DimCount: Integer;
 begin
   inherited Create;
-  FArray := Parent;
-  ParentArray := TFlexArray<T>(Parent^);
 
-  FRanges := Copy(ParentArray.GetRanges);
   if Ranges <> nil then
   begin
-    Ranges.Check(ParentArray.Data.FDims);
+    Ranges.Check(Dims);
+  end;
 
-    for i := 0 to System.High(Ranges) do
+  DimCount := System.Length(Dims);
+  SetLength(FRanges, DimCount);
+  for i := 0 to DimCount - 1 do
+  begin
+    if Ranges <> nil then
     begin
       case System.Length(Ranges[i]) of
-        0: ; // []の時、親の範囲をそのまま使用
-        1,2: FRanges[i] := [Ranges[i].Low, Ranges[i].High]; // [L] or [L, H]
+        0: FRanges[i] := [Dims[i].Low, Dims[i].High]; // []
+        1: FRanges[i] := [Ranges[i].Low, Ranges[i].Low];  // [L]
+        2: FRanges[i] := [Ranges[i].Low, Ranges[i].High]; // [L, H]
       end;
+    end
+    else
+    begin
+      FRanges[i] := [Dims[i].Low, Dims[i].High];
     end;
   end;
 
-  SetLength(FCoords, ParentArray.DimensionCount);
-  for i := 0 to System.Length(FCoords) - 1 do
+  SetLength(FCoords, DimCount);
+  for i := 0 to DimCount - 1 do
     FCoords[i] := FRanges[i].Low;
 
   // MoveNextが最初に呼ばれる前に1つ戻す（for..in の仕様に合わせる）
-  FCoords[System.High(FCoords)] := FRanges[System.High(FCoords)].Low - 1;
+  FCoords[DimCount - 1] := FRanges[DimCount - 1].Low - 1;
 end;
 
 /////////////////////////////////////////////////////////////////////////////////////
@@ -1180,7 +1188,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.CoordsIterator(Ranges: TFlexRanges = nil): TCoordsIterator;
 begin
-  Result := TCoordsIterator.Create(@Self, Ranges);
+  Result := TCoordsIterator.Create(Data.FDims, Ranges);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
