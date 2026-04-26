@@ -78,6 +78,9 @@ type
 
     // Filter用コールバック
     TFilterFunc<T> = reference to function(const Value: T; const Coords: TCoords): Boolean;
+  
+    // Binary操作用コールバック
+    TOperationFunc<T> = reference to function(const L, R: T): T;
 
     // スマートポインタを実現するためにすべての内部データを管理
     TData = class(TInterfacedObject)
@@ -114,6 +117,7 @@ type
     function DeleteDimCore(Dim: Integer; const Range: TFlexRange): TFlexArray<T>;
     function SliceCore(const Ranges: TFlexRanges): TFlexArray<T>;
     function SliceIndexedCore(const Indexes: TArray<TSliceIndexes>; BaseIndex: Integer = 0): TFlexArray<T>;
+    class function BroadcastCore(Source: TFlexArray<T>; Target: TFlexArray<T>; AFunc: TOperationFunc<T>): TFlexArray<T>; static;
 
   public
     constructor Create(const Shapes: array of Integer; BaseIndex: Integer = 0); overload; // nD
@@ -218,6 +222,13 @@ type
     
     // for-in ループ用列挙子
     function GetEnumerator: TFlexArrayEnumerator<T>;
+    
+    // ブロードキャスト関数
+    function Broadcast(Value: T; AFunc: TOperationFunc<T>): TFlexArray<T>; overload;
+    function Broadcast(Source: TFlexArray<T>; AFunc: TOperationFunc<T>): TFlexArray<T>; overload;
+    class function Broadcast(Value: T; Target: TFlexArray<T>; AFunc: TOperationFunc<T>): TFlexArray<T>; overload; static;
+    class function Broadcast(Source: TFlexArray<T>; Value: T; AFunc: TOperationFunc<T>): TFlexArray<T>; overload; static;
+    class function Broadcast(const Source: TFlexArray<T>; const Target: TFlexArray<T>; AFunc: TOperationFunc<T>): TFlexArray<T>; overload; static;
   end;
 
 implementation
@@ -2230,6 +2241,172 @@ begin
   if Index >= 0 then
     Result := Self.GetCoords(Index);
 end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 2つの配列を要素ごとに処理するコア関数
+// [引数] Target: 演算対象の配列（Selfと同じ形状であること）
+//        AFunc: 要素ごとの演算を行うコールバック
+// [戻値] 演算結果の配列
+//////////////////////////////////////////////////////////////////////////////////////
+class function TFlexArray<T>.BroadcastCore(Source: TFlexArray<T>; Target: TFlexArray<T>; AFunc: TOperationFunc<T>): TFlexArray<T>;
+var
+  i: Integer;
+  Coords: TCoords;
+  SourceCoords, TargetCoords: TCoords;
+  SourceShape, TargetShape, OutputShape: TFlexRanges;
+  d, MaxDims, SourceSize, TargetSize: Integer;
+begin
+  // 共通形状を計算
+  SourceShape := Source.GetRanges;
+  TargetShape := Target.GetRanges;
+  MaxDims := Max(Length(SourceShape), Length(TargetShape));
+  SetLength(OutputShape, MaxDims);
+
+  for d := 0 to MaxDims - 1 do
+  begin
+    SourceSize := 1;
+    TargetSize := 1;
+
+    if d < Length(SourceShape) then
+      SourceSize := SourceShape[d].Len;
+    if d < Length(TargetShape) then
+      TargetSize := TargetShape[d].Len;
+
+    if (SourceSize = 1) and (TargetSize = 1) then
+    begin
+      // 両方1の時は両方のlowが等しいこと
+      if (d < Length(SourceShape)) and (d < Length(TargetShape)) then
+      begin
+        if SourceShape[d].Low <> TargetShape[d].Low then
+          raise Exception.Create('ブロードキャストできません：BaseIndexが一致しません');
+        OutputShape[d] := [SourceShape[d].Low, SourceShape[d].Low];
+      end
+      else if d < Length(SourceShape) then
+        OutputShape[d] := [SourceShape[d].Low, SourceShape[d].Low]
+      else
+        OutputShape[d] := [TargetShape[d].Low, TargetShape[d].Low];
+    end
+    else if SourceSize = 1 then
+    begin
+      // SourceSize = 1の時は、Targetの次元範囲を使用
+      OutputShape[d] := [TargetShape[d].Low, TargetShape[d].High]
+    end
+    else if TargetSize = 1 then
+    begin
+      // TargetSize = 1の時は、Sourceの次元範囲を使用
+      OutputShape[d] := [SourceShape[d].Low, SourceShape[d].High]
+    end
+    else if SourceSize = TargetSize then
+      OutputShape[d] := [SourceShape[d].Low, SourceShape[d].High]
+    else
+      raise Exception.Create('ブロードキャストできません：形状が互換性ありません');
+  end;
+
+  // 結果配列を作成（共通形状を使用）
+  Result := TFlexArray<T>.CreateFromRange(OutputShape);
+
+  // 座標を初期化
+  Result.InitializeCoords(Coords);
+  Source.InitializeCoords(Coords);
+  Target.InitializeCoords(Coords);
+
+  for i := 0 to Result.TotalSize - 1 do
+  begin
+    // ソース座標を計算（サイズ1の次元はLow値を固定使用）
+    for d := 0 to System.High(Coords) do
+    begin
+      if d < Length(SourceShape) then
+      begin
+        if SourceShape[d].Len = 1 then
+          SourceCoords[d] := SourceShape[d].Low
+        else
+          // BaseIndexの差を補正
+          SourceCoords[d] := Coords[d] - Result.Low(d+1) + SourceShape[d].Low;
+      end
+      else
+        SourceCoords[d] := 0;
+    end;
+
+    // ターゲット座標を計算（サイズ1の次元はLow値を固定使用）
+    for d := 0 to System.High(Coords) do
+    begin
+      if d < Length(TargetShape) then
+      begin
+        if TargetShape[d].Len = 1 then
+          TargetCoords[d] := TargetShape[d].Low
+        else
+          // BaseIndexの差を補正
+          TargetCoords[d] := Coords[d] - Result.Low(d+1) + TargetShape[d].Low;
+      end
+      else
+        TargetCoords[d] := 0;
+    end;
+
+    Result.Data.FArray[i] := AFunc(Source.ItemAt[SourceCoords], Source.ItemAt[TargetCoords]);
+    Result.IncCoords(Coords);
+  end;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] スカラー値を自身の形状でブロードキャスト（コールバック付き）
+// [引数] Value: ブロードキャストする値, AFunc: 要素ごとの演算関数
+// [戻値] コールバック適用後の新しい配列
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.Broadcast(Value: T; AFunc: TOperationFunc<T>): TFlexArray<T>;
+begin
+  Result := TFlexArray<T>.Broadcast(Self, Value, AFunc);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 配列を自身の形状にブロードキャスト（コールバック付き）
+// [引数] Source: ブロードキャスト元の配列, AFunc: 要素ごとの演算関数
+// [戻値] コールバック適用後の新しい配列
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.Broadcast(Source: TFlexArray<T>; AFunc: TOperationFunc<T>): TFlexArray<T>;
+begin
+  Result := TFlexArray<T>.Broadcast(Self, Source, AFunc);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 配列をスカラー値でブロードキャスト（クラス関数、コールバック付き）
+// [引数] Source: ブロードキャスト元の配列, Value: ブロードキャストする値, AFunc: 要素ごとの演算関数
+// [戻値] コールバック適用後の新しい配列
+//////////////////////////////////////////////////////////////////////////////////////
+class function TFlexArray<T>.Broadcast(Source: TFlexArray<T>; Value: T; AFunc: TOperationFunc<T>): TFlexArray<T>;
+var
+  ScalarArray: TFlexArray<T>;
+begin
+  // スカラー値を配列に変換
+  ScalarArray := TFlexArray<T>.CreateFromValues([Value]);
+  Result := TFlexArray<T>.BroadcastCore(Source, ScalarArray, AFunc);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] スカラー値をターゲット形状でブロードキャスト（クラス関数、コールバック付き）
+// [引数] Value: ブロードキャストする値, Target: ターゲット配列, AFunc: 要素ごとの演算関数
+// [戻値] コールバック適用後の新しい配列
+//////////////////////////////////////////////////////////////////////////////////////
+class function TFlexArray<T>.Broadcast(Value: T; Target: TFlexArray<T>; AFunc: TOperationFunc<T>): TFlexArray<T>;
+var
+  ScalarArray: TFlexArray<T>;
+begin
+  // スカラー値を配列に変換
+  ScalarArray := TFlexArray<T>.CreateFromValues([Value]);
+  Result := TFlexArray<T>.BroadcastCore(ScalarArray, Target, AFunc);
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 配列を別の配列の形状にブロードキャスト（クラス関数、コールバック付き）
+// [引数] Source: ブロードキャスト元の配列, Target: ターゲット配列, AFunc: 要素ごとの演算関数
+// [戻値] コールバック適用後の新しい配列
+//////////////////////////////////////////////////////////////////////////////////////
+class function TFlexArray<T>.Broadcast(const Source: TFlexArray<T>; const Target: TFlexArray<T>; AFunc: TOperationFunc<T>): TFlexArray<T>;
+begin
+  // BroadcastCoreで演算実行
+  // 注：BroadcastCore内で次元数の不一致を直接処理する
+  Result := BroadcastCore(Source, Target, AFunc);
+end;
+
 
 end.
 
