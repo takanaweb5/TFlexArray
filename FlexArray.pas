@@ -77,10 +77,10 @@ type
     end;
 
     // Filter用コールバック
-    TFilterFunc<T> = reference to function(const Value: T; const Coords: TCoords): Boolean;
+    TFilterFunc<T> = reference to function(Value: T; Coords: TCoords): Boolean;
   
     // Binary操作用コールバック
-    TOperationFunc<T> = reference to function(const L, R: T): T;
+    TOperationFunc<T> = reference to function(L, R: T): T;
 
     // スマートポインタを実現するためにすべての内部データを管理
     TData = class(TInterfacedObject)
@@ -2250,100 +2250,104 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 class function TFlexArray<T>.BroadcastCore(Source: TFlexArray<T>; Target: TFlexArray<T>; AFunc: TOperationFunc<T>): TFlexArray<T>;
 var
-  i: Integer;
+  i, d, MaxDims: Integer;
   Coords: TCoords;
-  SourceCoords, TargetCoords: TCoords;
-  SourceShape, TargetShape, OutputShape: TFlexRanges;
-  d, MaxDims, SourceSize, TargetSize: Integer;
+  SrcRanges, TgtRanges, NewRanges: TFlexRanges;
+  SrcIdx, TgtIdx: Integer;
+  bak1, bak2: TFlexDimensions;
+  SrcStride, TgtStride: array of Integer;
 begin
-  // 共通形状を計算
-  SourceShape := Source.GetRanges;
-  TargetShape := Target.GetRanges;
-  MaxDims := Max(Length(SourceShape), Length(TargetShape));
-  SetLength(OutputShape, MaxDims);
+  SrcRanges := Source.GetRanges;
+  TgtRanges := Target.GetRanges;
 
-  for d := 0 to MaxDims - 1 do
+  MaxDims := Max(Length(SrcRanges), Length(TgtRanges));
+  SetLength(NewRanges, MaxDims);
+  SetLength(SrcStride, MaxDims);
+  SetLength(TgtStride, MaxDims);
+
+  SrcIdx := Length(SrcRanges) - 1;
+  TgtIdx := Length(TgtRanges) - 1;
+
+  for d := MaxDims - 1 downto 0 do
   begin
-    SourceSize := 1;
-    TargetSize := 1;
+    if (SrcIdx < 0) or (TgtIdx < 0) then Break;
 
-    if d < Length(SourceShape) then
-      SourceSize := SourceShape[d].Len;
-    if d < Length(TargetShape) then
-      TargetSize := TargetShape[d].Len;
-
-    if (SourceSize = 1) and (TargetSize = 1) then
+    if SrcRanges[SrcIdx].Len = 1 then
     begin
-      // 両方1の時は両方のlowが等しいこと
-      if (d < Length(SourceShape)) and (d < Length(TargetShape)) then
-      begin
-        if SourceShape[d].Low <> TargetShape[d].Low then
-          raise Exception.Create('ブロードキャストできません：BaseIndexが一致しません');
-        OutputShape[d] := [SourceShape[d].Low, SourceShape[d].Low];
-      end
-      else if d < Length(SourceShape) then
-        OutputShape[d] := [SourceShape[d].Low, SourceShape[d].Low]
-      else
-        OutputShape[d] := [TargetShape[d].Low, TargetShape[d].Low];
+      NewRanges[d] := [TgtRanges[TgtIdx].Low, TgtRanges[TgtIdx].High];
     end
-    else if SourceSize = 1 then
+    else if TgtRanges[TgtIdx].Len = 1 then
     begin
-      // SourceSize = 1の時は、Targetの次元範囲を使用
-      OutputShape[d] := [TargetShape[d].Low, TargetShape[d].High]
+      NewRanges[d] := [SrcRanges[SrcIdx].Low, SrcRanges[SrcIdx].High];
     end
-    else if TargetSize = 1 then
-    begin
-      // TargetSize = 1の時は、Sourceの次元範囲を使用
-      OutputShape[d] := [SourceShape[d].Low, SourceShape[d].High]
-    end
-    else if SourceSize = TargetSize then
-      OutputShape[d] := [SourceShape[d].Low, SourceShape[d].High]
     else
-      raise Exception.Create('ブロードキャストできません：形状が互換性ありません');
+    begin
+      // 両方の次元がサイズ複数の場合のみ形状をチェック
+      if (SrcRanges[SrcIdx].Low <> TgtRanges[TgtIdx].Low) or
+         (SrcRanges[SrcIdx].High <> TgtRanges[TgtIdx].High) then
+        raise Exception.CreateFmt('ブロードキャストできません：次元 %d で形状が一致しません', [d]);
+
+      NewRanges[d] := [SrcRanges[SrcIdx].Low, SrcRanges[SrcIdx].High];
+    end;
+
+    if SrcRanges[SrcIdx].Len > 1 then
+      SrcStride[d] := Source.Data.FDims[SrcIdx].Stride;
+
+    if TgtRanges[TgtIdx].Len > 1 then
+      TgtStride[d] := Target.Data.FDims[TgtIdx].Stride;
+
+    Dec(SrcIdx);
+    Dec(TgtIdx);
+  end;
+
+  if SrcIdx >= 0 then
+  begin
+    // Sourceの残り次元をコピー
+    for d := SrcIdx downto 0 do
+    begin
+      NewRanges[d] := [SrcRanges[d].Low, SrcRanges[d].High];
+      SrcStride[d] := Source.Data.FDims[d].Stride;
+    end;
+  end
+  else if TgtIdx >= 0 then
+  begin
+    // Targetの残り次元をコピー
+    for d := TgtIdx downto 0 do
+    begin
+      NewRanges[d] := [TgtRanges[d].Low, TgtRanges[d].High];
+      TgtStride[d] := Target.Data.FDims[d].Stride;
+    end;
   end;
 
   // 結果配列を作成（共通形状を使用）
-  Result := TFlexArray<T>.CreateFromRange(OutputShape);
+  Result := TFlexArray<T>.CreateFromRange(NewRanges);
 
-  // 座標を初期化
-  Result.InitializeCoords(Coords);
-  Source.InitializeCoords(Coords);
-  Target.InitializeCoords(Coords);
+  // 元のFDimsを保存
+  bak1 := Copy(Source.Data.FDims);
+  bak2 := Copy(Target.Data.FDims);
 
-  for i := 0 to Result.TotalSize - 1 do
-  begin
-    // ソース座標を計算（サイズ1の次元はLow値を固定使用）
-    for d := 0 to System.High(Coords) do
+  try
+    // 共通座標系で処理するため、両配列のFDimsをResultの形状に統一
+    Source.Data.FDims := Copy(Result.Data.FDims);
+    Target.Data.FDims := Copy(Result.Data.FDims);
+
+    // 元の次元のStrideを設定するが、要素数1の次元は0なので空回りする
+    for d := 0 to MaxDims - 1 do
     begin
-      if d < Length(SourceShape) then
-      begin
-        if SourceShape[d].Len = 1 then
-          SourceCoords[d] := SourceShape[d].Low
-        else
-          // BaseIndexの差を補正
-          SourceCoords[d] := Coords[d] - Result.Low(d+1) + SourceShape[d].Low;
-      end
-      else
-        SourceCoords[d] := 0;
+      Source.Data.FDims[d].Stride := SrcStride[d];
+      Target.Data.FDims[d].Stride := TgtStride[d];
     end;
 
-    // ターゲット座標を計算（サイズ1の次元はLow値を固定使用）
-    for d := 0 to System.High(Coords) do
+    Result.InitializeCoords(Coords);
+    for i := 0 to Result.TotalSize - 1 do
     begin
-      if d < Length(TargetShape) then
-      begin
-        if TargetShape[d].Len = 1 then
-          TargetCoords[d] := TargetShape[d].Low
-        else
-          // BaseIndexの差を補正
-          TargetCoords[d] := Coords[d] - Result.Low(d+1) + TargetShape[d].Low;
-      end
-      else
-        TargetCoords[d] := 0;
+      Result.Data.FArray[i] := AFunc(Source.ItemAt[Coords], Target.ItemAt[Coords]);
+      Result.IncCoords(Coords);
     end;
 
-    Result.Data.FArray[i] := AFunc(Source.ItemAt[SourceCoords], Source.ItemAt[TargetCoords]);
-    Result.IncCoords(Coords);
+  finally
+    Source.Data.FDims := bak1;
+    Target.Data.FDims := bak2;
   end;
 end;
 
@@ -2374,11 +2378,11 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 class function TFlexArray<T>.Broadcast(Source: TFlexArray<T>; Value: T; AFunc: TOperationFunc<T>): TFlexArray<T>;
 var
-  ScalarArray: TFlexArray<T>;
+  i: Integer;
 begin
-  // スカラー値を配列に変換
-  ScalarArray := TFlexArray<T>.CreateFromValues([Value]);
-  Result := TFlexArray<T>.BroadcastCore(Source, ScalarArray, AFunc);
+  Result := TFlexArray<T>.CreateFromRange(Source.GetRanges);
+  for i := 0 to Result.TotalSize - 1 do
+    Result.Data.FArray[i] := AFunc(Source.Data.FArray[i], Value);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -2388,11 +2392,11 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 class function TFlexArray<T>.Broadcast(Value: T; Target: TFlexArray<T>; AFunc: TOperationFunc<T>): TFlexArray<T>;
 var
-  ScalarArray: TFlexArray<T>;
+  i: Integer;
 begin
-  // スカラー値を配列に変換
-  ScalarArray := TFlexArray<T>.CreateFromValues([Value]);
-  Result := TFlexArray<T>.BroadcastCore(ScalarArray, Target, AFunc);
+  Result := TFlexArray<T>.CreateFromRange(Target.GetRanges);
+  for i := 0 to Result.TotalSize - 1 do
+    Result.Data.FArray[i] := AFunc(Value, Target.Data.FArray[i]);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -2402,11 +2406,7 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 class function TFlexArray<T>.Broadcast(const Source: TFlexArray<T>; const Target: TFlexArray<T>; AFunc: TOperationFunc<T>): TFlexArray<T>;
 begin
-  // BroadcastCoreで演算実行
-  // 注：BroadcastCore内で次元数の不一致を直接処理する
   Result := BroadcastCore(Source, Target, AFunc);
 end;
 
-
 end.
-
