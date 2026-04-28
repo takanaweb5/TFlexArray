@@ -95,21 +95,21 @@ type
     function Data: TData; // 内部データへのアクセサ
 
     function GetValue(const Coords: array of Integer): T; overload;
-    procedure SetValue(const Coords: array of Integer; const Value: T); overload;
+    procedure SetValue(const Coords: array of Integer; Value: T); overload;
     function GetValue(const Coords: TCoords): T;  overload;
     procedure SetValue(const Coords: TCoords; const Value: T);  overload;
     function GetElement(Index: Integer): T; inline;
-    procedure SetElement(Index: Integer; const Value: T); inline;
+    procedure SetElement(Index: Integer; Value: T); inline;
     function GetDimensionCount: Integer; inline;
     function GetTotalSize: Integer; inline;
     procedure ValidateTransposeDimensions(const NewDims: array of Integer);
     function GetRanges: TFlexRanges;
-    function ValueToStr(const V: T): string;
+    function ValueToStr(V: T): string;
     function InitializeDimensions(const Ranges: TFlexRanges): Integer;
     procedure CheckDimension(ExpectedDim: Integer);
 //    procedure CheckViewMode;
     function GetCompatibleBaseIndex(const Another: TFlexArray<T>): Integer;
-    function RangesStringToRanges(const RangeStr: string): TFlexRanges;
+    function RangesStringToRanges(RangeStr: string): TFlexRanges;
     function ShapesToRanges(const Shapes: array of Integer; BaseIndex: Integer): TFlexRanges;
     procedure LogicalTranspose(const NewDims: array of Integer);
     function TransposeCore(const NewDims: array of Integer): TFlexArray<T>;
@@ -123,7 +123,7 @@ type
     constructor Create(const Shapes: array of Integer; BaseIndex: Integer = 0); overload; // nD
     constructor CreateFromRange(const Range: TFlexRange); overload; // 1D
     constructor CreateFromRange(const Ranges: TFlexRanges); overload; // nD
-    constructor CreateFromRange(const RangeStr: string); overload;
+    constructor CreateFromRange(RangeStr: string); overload;
     constructor CreateFromFlexArray(const Src: TFlexArray<T>); overload;
     constructor CreateFromArray(const Src: TArray<T>; BaseIndex: Integer = 0); overload;
     constructor CreateFromValues(const Values: array of T; BaseIndex: Integer = 0); overload;
@@ -151,7 +151,7 @@ type
     function Reshape(const Shapes: array of Integer; BaseIndex: Integer = 0): TFlexArray<T>;
     function ReshapeRange(const Range: TFlexRange): TFlexArray<T>; overload; // 1D
     function ReshapeRange(const Ranges: TFlexRanges): TFlexArray<T>; overload; // nD
-    function ReshapeRange(const RangeStr: string): TFlexArray<T>; overload;
+    function ReshapeRange(RangeStr: string): TFlexArray<T>; overload;
     function Rebase(BaseIndex: Integer): TFlexArray<T>; overload;
     function Rebase(const BaseIndexes: array of Integer): TFlexArray<T>; overload;
 
@@ -165,7 +165,7 @@ type
     function SliceDim(Dim: Integer; Index: Integer): TFlexArray<T>; overload;  // nD
     function SliceRow(RowIndex: Integer): TFlexArray<T>;  // 2D
     function SliceCol(ColIndex: Integer): TFlexArray<T>;  // 2D
-    function Slice(Ranges: TFlexRanges): TFlexArray<T>; overload;
+    function Slice(const Ranges: TFlexRanges): TFlexArray<T>; overload;
     function SliceIndexed(const Indexes: TArray<TSliceIndexes>; BaseIndex: Integer = 0): TFlexArray<T>;
 
     // 2D配列の行・列挿入
@@ -194,7 +194,7 @@ type
     function VStack(const Another: TFlexArray<T>): TFlexArray<T>;  // 2D
     function AppendArray(const Another: TFlexArray<T>): TFlexArray<T>; overload;  // 1D
     function AppendArray(const Another: TArray<T>): TFlexArray<T>; overload;  // 1D
-    function AppendArray(const Value: T): TFlexArray<T>; overload;  // 1D
+    function AppendArray(Value: T): TFlexArray<T>; overload;  // 1D
 
     // 1D配列操作メソッド
 //    function InsertArray(const StartIndex: Integer; const Items: TArray<T>): TFlexArray<T>; overload;
@@ -207,7 +207,7 @@ type
     // Swiftスタイル: 非破壊的(-ed) / 破壊的(原形)
     function Fill(Value: T): TFlexArray<T>;
 
-    function Filter(const AFunc: TFilterFunc<T>): TArray<T>;
+    function Filter(AFunc: TFilterFunc<T>): TArray<T>;
 
     // in 演算子のオーバーロード
     class operator In(const Value: T; const FlexArray: TFlexArray<T>): Boolean;
@@ -225,9 +225,9 @@ type
     
     // ブロードキャスト関数
     function Broadcast(Value: T; AFunc: TOperationFunc<T>): TFlexArray<T>; overload;
-    function Broadcast(Source: TFlexArray<T>; AFunc: TOperationFunc<T>): TFlexArray<T>; overload;
-    class function Broadcast(Value: T; Target: TFlexArray<T>; AFunc: TOperationFunc<T>): TFlexArray<T>; overload; static;
-    class function Broadcast(Source: TFlexArray<T>; Value: T; AFunc: TOperationFunc<T>): TFlexArray<T>; overload; static;
+    function Broadcast(const Source: TFlexArray<T>; AFunc: TOperationFunc<T>): TFlexArray<T>; overload;
+    class function Broadcast(Value: T; const Target: TFlexArray<T>; AFunc: TOperationFunc<T>): TFlexArray<T>; overload; static;
+    class function Broadcast(const Source: TFlexArray<T>; Value: T; AFunc: TOperationFunc<T>): TFlexArray<T>; overload; static;
     class function Broadcast(const Source: TFlexArray<T>; const Target: TFlexArray<T>; AFunc: TOperationFunc<T>): TFlexArray<T>; overload; static;
   end;
 
@@ -602,7 +602,7 @@ end;
 // [戻値] なし
 // [使用例] TFlexArray<Integer>.CreateFromRange("1..3,1..2")  // 3x2行列
 //////////////////////////////////////////////////////////////////////////////////////
-constructor TFlexArray<T>.CreateFromRange(const RangeStr: string);
+constructor TFlexArray<T>.CreateFromRange(RangeStr: string);
 begin
   SetLength(Data.FArray, InitializeDimensions(RangesStringToRanges(RangeStr)));
 end;
@@ -711,7 +711,7 @@ end;
 // [戻値] Self（メソッドチェーン専用）
 // [使用例] Matrix.ReshapeRange("1..3,1..2")  // 3x2行列に再定義
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.ReshapeRange(const RangeStr: string): TFlexArray<T>;
+function TFlexArray<T>.ReshapeRange(RangeStr: string): TFlexArray<T>;
 begin
   Result := ReshapeRange(RangesStringToRanges(RangeStr));
 end;
@@ -888,7 +888,7 @@ end;
 // [戻値] なし
 // [備考] TCoordsは動的配列変数用
 //////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.SetValue(const Coords: array of Integer; const Value: T);
+procedure TFlexArray<T>.SetValue(const Coords: array of Integer; Value: T);
 begin
   Data.FArray[GetOffset(Coords)] := Value;
 end;
@@ -912,7 +912,7 @@ end;
 // [引数] インデックス, 値
 // [戻値] なし
 //////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.SetElement(Index: Integer; const Value: T);
+procedure TFlexArray<T>.SetElement(Index: Integer; Value: T);
 begin
   Data.FArray[Index] := Value;
 end;
@@ -922,7 +922,7 @@ end;
 // [引数] 変換対象の値
 // [戻値] 文字列
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.ValueToStr(const V: T): string;
+function TFlexArray<T>.ValueToStr(V: T): string;
 var
   Val: TValue;
 begin
@@ -998,7 +998,7 @@ end;
 // [戻値] 範囲配列 [[1,3],[1,2]]
 // [使用例] ParseRangesString("1..3,1..2") → [[1,3],[1,2]]
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.RangesStringToRanges(const RangeStr: string): TFlexRanges;
+function TFlexArray<T>.RangesStringToRanges(RangeStr: string): TFlexRanges;
 var
   CleanStr: string;
   Parts: TArray<string>;
@@ -1318,7 +1318,7 @@ end;
 //        []の次元は元の次元の[Low,High]がそのまま適用される
 //        [4]のように要素数が1の次元は潰される
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.Slice(Ranges: TFlexRanges): TFlexArray<T>;
+function TFlexArray<T>.Slice(const Ranges: TFlexRanges): TFlexArray<T>;
 var
   i: Integer;
   SingleDimCount: Integer;
@@ -2091,7 +2091,7 @@ end;
 // [戻値] 追加後の新しい配列
 // [使用例] Vector1 := Vector1.AppendArray(42)
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.AppendArray(const Value: T): TFlexArray<T>;
+function TFlexArray<T>.AppendArray(Value: T): TFlexArray<T>;
 begin
   CheckDimension(1);
   Result := Self.AppendArray([Value]);
@@ -2158,12 +2158,12 @@ end;
 // [概要] 配列の要素をフィルタリングして条件に合う要素のみを返す（非破壊的）
 // [引数] フィルタ関数（値と座標を引数に取り、条件を返す）
 // [戻値] 条件に合う要素の配列
-// [使用例] B := A.Filter(function(const Value: Integer; const Coords: TCoords): Boolean
+// [使用例] B := A.Filter(function(Value: Integer; Coords: TCoords): Boolean
 //                 begin
 //                   Result := (Coords[0] >= Coords[1]);
 //                 end);
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.Filter(const AFunc: TFilterFunc<T>): TArray<T>;
+function TFlexArray<T>.Filter(AFunc: TFilterFunc<T>): TArray<T>;
 var
   i, Count: Integer;
   CurrentCoords: TCoords;
@@ -2367,7 +2367,7 @@ end;
 // [引数] Source: ブロードキャスト元の配列, AFunc: 要素ごとの演算関数
 // [戻値] コールバック適用後の新しい配列
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.Broadcast(Source: TFlexArray<T>; AFunc: TOperationFunc<T>): TFlexArray<T>;
+function TFlexArray<T>.Broadcast(const Source: TFlexArray<T>; AFunc: TOperationFunc<T>): TFlexArray<T>;
 begin
   Result := TFlexArray<T>.Broadcast(Self, Source, AFunc);
 end;
@@ -2377,7 +2377,7 @@ end;
 // [引数] Source: ブロードキャスト元の配列, Value: ブロードキャストする値, AFunc: 要素ごとの演算関数
 // [戻値] コールバック適用後の新しい配列
 //////////////////////////////////////////////////////////////////////////////////////
-class function TFlexArray<T>.Broadcast(Source: TFlexArray<T>; Value: T; AFunc: TOperationFunc<T>): TFlexArray<T>;
+class function TFlexArray<T>.Broadcast(const Source: TFlexArray<T>; Value: T; AFunc: TOperationFunc<T>): TFlexArray<T>;
 var
   i: Integer;
 begin
@@ -2391,7 +2391,7 @@ end;
 // [引数] Value: ブロードキャストする値, Target: ターゲット配列, AFunc: 要素ごとの演算関数
 // [戻値] コールバック適用後の新しい配列
 //////////////////////////////////////////////////////////////////////////////////////
-class function TFlexArray<T>.Broadcast(Value: T; Target: TFlexArray<T>; AFunc: TOperationFunc<T>): TFlexArray<T>;
+class function TFlexArray<T>.Broadcast(Value: T; const Target: TFlexArray<T>; AFunc: TOperationFunc<T>): TFlexArray<T>;
 var
   i: Integer;
 begin
