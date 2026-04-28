@@ -2252,49 +2252,50 @@ class function TFlexArray<T>.BroadcastCore(Source: TFlexArray<T>; Target: TFlexA
 var
   i, d, MaxDims: Integer;
   Coords: TCoords;
-  SrcRanges, TgtRanges, NewRanges: TFlexRanges;
+  NewRanges: TFlexRanges;
   SrcIdx, TgtIdx: Integer;
   bak1, bak2: TFlexDimensions;
+  SrcDims, TgtDims: TFlexDimensions;
   SrcStride, TgtStride: array of Integer;
 begin
-  SrcRanges := Source.GetRanges;
-  TgtRanges := Target.GetRanges;
+  SrcDims := Source.Data.FDims;
+  TgtDims := Target.Data.FDims;
 
-  MaxDims := Max(Length(SrcRanges), Length(TgtRanges));
+  MaxDims := Max(Length(SrcDims), Length(TgtDims));
   SetLength(NewRanges, MaxDims);
   SetLength(SrcStride, MaxDims);
   SetLength(TgtStride, MaxDims);
 
-  SrcIdx := Length(SrcRanges) - 1;
-  TgtIdx := Length(TgtRanges) - 1;
+  SrcIdx := Length(SrcDims) - 1;
+  TgtIdx := Length(TgtDims) - 1;
 
   for d := MaxDims - 1 downto 0 do
   begin
     if (SrcIdx < 0) or (TgtIdx < 0) then Break;
 
-    if SrcRanges[SrcIdx].Len = 1 then
+    if SrcDims[SrcIdx].Len = 1 then
     begin
-      NewRanges[d] := [TgtRanges[TgtIdx].Low, TgtRanges[TgtIdx].High];
+      NewRanges[d] := [TgtDims[TgtIdx].Low, TgtDims[TgtIdx].High];
     end
-    else if TgtRanges[TgtIdx].Len = 1 then
+    else if TgtDims[TgtIdx].Len = 1 then
     begin
-      NewRanges[d] := [SrcRanges[SrcIdx].Low, SrcRanges[SrcIdx].High];
+      NewRanges[d] := [SrcDims[SrcIdx].Low, SrcDims[SrcIdx].High];
     end
     else
     begin
       // 両方の次元がサイズ複数の場合のみ形状をチェック
-      if (SrcRanges[SrcIdx].Low <> TgtRanges[TgtIdx].Low) or
-         (SrcRanges[SrcIdx].High <> TgtRanges[TgtIdx].High) then
+      if (SrcDims[SrcIdx].Low <> TgtDims[TgtIdx].Low) or
+         (SrcDims[SrcIdx].High <> TgtDims[TgtIdx].High) then
         raise Exception.CreateFmt('ブロードキャストできません：次元 %d で形状が一致しません', [d]);
 
-      NewRanges[d] := [SrcRanges[SrcIdx].Low, SrcRanges[SrcIdx].High];
+      NewRanges[d] := [SrcDims[SrcIdx].Low, SrcDims[SrcIdx].High];
     end;
 
-    if SrcRanges[SrcIdx].Len > 1 then
-      SrcStride[d] := Source.Data.FDims[SrcIdx].Stride;
+    if SrcDims[SrcIdx].Len > 1 then
+      SrcStride[d] := SrcDims[SrcIdx].Stride;
 
-    if TgtRanges[TgtIdx].Len > 1 then
-      TgtStride[d] := Target.Data.FDims[TgtIdx].Stride;
+    if TgtDims[TgtIdx].Len > 1 then
+      TgtStride[d] := TgtDims[TgtIdx].Stride;
 
     Dec(SrcIdx);
     Dec(TgtIdx);
@@ -2305,8 +2306,8 @@ begin
     // Sourceの残り次元をコピー
     for d := SrcIdx downto 0 do
     begin
-      NewRanges[d] := [SrcRanges[d].Low, SrcRanges[d].High];
-      SrcStride[d] := Source.Data.FDims[d].Stride;
+      NewRanges[d] := [SrcDims[d].Low, SrcDims[d].High];
+      SrcStride[d] := SrcDims[d].Stride;
     end;
   end
   else if TgtIdx >= 0 then
@@ -2314,8 +2315,8 @@ begin
     // Targetの残り次元をコピー
     for d := TgtIdx downto 0 do
     begin
-      NewRanges[d] := [TgtRanges[d].Low, TgtRanges[d].High];
-      TgtStride[d] := Target.Data.FDims[d].Stride;
+      NewRanges[d] := [TgtDims[d].Low, TgtDims[d].High];
+      TgtStride[d] := TgtDims[d].Stride;
     end;
   end;
 
