@@ -126,7 +126,6 @@ type
     constructor CreateFromRange(RangeStr: string); overload;
     constructor CreateFromFlexArray(const Src: TFlexArray<T>); overload;
     constructor CreateFromArray(const Src: TArray<T>; BaseIndex: Integer = 0); overload;
-    constructor CreateFromValues(const Values: array of T; BaseIndex: Integer = 0); overload;
     constructor ViewFromArray(const Src: TArray<T>; BaseIndex: Integer = 0); overload;
 
     function Low: Integer; overload;  // 1D
@@ -620,26 +619,11 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
-// [概要] 一次元配列簡易生成コンストラクタ
-// [引数] Values: 配列の要素値, BaseIndex: ベースインデックス(省略時:0)
-// [戻値] なし
-// [使用例] TFlexArray<Integer>.CreateFromValues([1,2,3,4], 0)
-//////////////////////////////////////////////////////////////////////////////////////
-constructor TFlexArray<T>.CreateFromValues(const Values: array of T; BaseIndex: Integer = 0);
-var
-  i: Integer;
-begin
-  InitializeDimensions([[BaseIndex, BaseIndex + System.Length(Values) - 1]]);
-  SetLength(Data.FArray, System.Length(Values));
-  for i := 0 to System.High(Values) do
-    Data.FArray[i] := Values[i];
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
 // [概要] 動的一次元配列からFlexArrayを生成する
 // [引数] 元の動的配列, 開始インデックス(省略時:0)
 // [戻値] なし
 // [使用例] TFlexArray<Integer>.CreateFromArray(arr, 1)
+//          TFlexArray<Integer>.CreateFromArray([1,2,3,4], 0)
 //////////////////////////////////////////////////////////////////////////////////////
 constructor TFlexArray<T>.CreateFromArray(const Src: TArray<T>; BaseIndex: Integer = 0);
 begin
@@ -2043,9 +2027,30 @@ end;
 // [戻値] 結合結果の配列
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.VStack(const Another: TFlexArray<T>): TFlexArray<T>;
+var
+  ColLen, AnotherColLen, ColBaseIdx: Integer;
 begin
-  CheckDimension(2);
-  Result := Self.Concat(Another, 1);
+  // 次元数チェック（1次元または2次元のみ許可）
+  if not(Self.DimensionCount in [1,2]) or not(Another.DimensionCount in [1,2]) then
+    raise Exception.Create('VStack: 1次元または2次元配列のみ結合できます');
+
+  // 列数チェック
+  ColLen := Self.Len(Self.DimensionCount);
+  AnotherColLen := Another.Len(Another.DimensionCount);
+  ColBaseIdx := Self.Low(Self.DimensionCount);
+
+  // 列の形状チェック（列数とLow値の両方を確認）
+  if ColLen <> AnotherColLen then
+    raise Exception.CreateFmt('VStack: 列数が一致しません (self: 列数=%d, another: 列数=%d)', 
+      [ColLen, AnotherColLen]);
+
+  // 配列を結合
+  Result := TFlexArray<T>.CreateFromArray(Self.Data.FArray + Another.Data.FArray);
+
+  // 行のBaseIndexは常にSelf.Low(1)を使用
+  // - Selfが2Dの場合：行のBaseIndexとして使用
+  // - Selfが1Dの場合：行BaseIdxは存在しないが、列BaseIdxを行BaseIdxとして代用
+  Result.Reshape([Result.TotalSize div ColLen, ColLen]).ReBase([Self.Low(1), ColBaseIdx]);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -2253,9 +2258,11 @@ var
   Coords: TCoords;
   NewRanges: TFlexRanges;
   SrcIdx, TgtIdx: Integer;
-  bak1, bak2: TFlexDimensions;
   SrcDims, TgtDims: TFlexDimensions;
+  DimLen: Integer;
   SrcStride, TgtStride: array of Integer;
+  Counters: array of Integer;
+  idxA, idxB: Integer;
 begin
   SrcDims := Source.Data.FDims;
   TgtDims := Target.Data.FDims;
@@ -2321,33 +2328,36 @@ begin
 
   // 結果配列を作成（共通形状を使用）
   Result := TFlexArray<T>.CreateFromRange(NewRanges);
+  SetLength(Counters, MaxDims);
+  idxA := 0;
+  idxB := 0;
 
-  // 元のFDimsを保存
-  bak1 := Copy(Source.Data.FDims);
-  bak2 := Copy(Target.Data.FDims);
+  for i := 0 to Result.TotalSize - 1 do
+  begin
+    Result.Data.FArray[i] := AFunc(Source.Data.FArray[idxA], Target.Data.FArray[idxB]);
 
-  try
-    // 共通座標系で処理するため、両配列のFDimsをResultの形状に統一
-    Source.Data.FDims := Copy(Result.Data.FDims);
-    Target.Data.FDims := Copy(Result.Data.FDims);
-
-    // 元の次元のStrideを設定するが、要素数1の次元は0なので空回りする
-    for d := 0 to MaxDims - 1 do
+    // 次元数分Loop
+    for d := MaxDims - 1 downto 0 do
     begin
-      Source.Data.FDims[d].Stride := SrcStride[d];
-      Target.Data.FDims[d].Stride := TgtStride[d];
-    end;
+      DimLen := Result.Data.FDims[d].Len;
+      Inc(Counters[d]);
 
-    Result.InitializeCoords(Coords);
-    for i := 0 to Result.TotalSize - 1 do
-    begin
-      Result.Data.FArray[i] := AFunc(Source.ItemAt[Coords], Target.ItemAt[Coords]);
-      Result.IncCoords(Coords);
-    end;
+      idxA := idxA + SrcStride[d];
+      idxB := idxB + TgtStride[d];
 
-  finally
-    Source.Data.FDims := bak1;
-    Target.Data.FDims := bak2;
+      if Counters[d] < DimLen then
+        // 繰り上がりなし（この次元だけ進んで終了）
+        Break
+      else
+      begin
+        // 繰り上がり（この次元をリセットして上位へ）
+        Counters[d] := 0;
+
+        // 行き過ぎた分をまとめて巻き戻す
+        idxA := idxA - DimLen * SrcStride[d];
+        idxB := idxB - DimLen * TgtStride[d];
+      end;
+    end;
   end;
 end;
 
