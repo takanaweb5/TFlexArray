@@ -2252,7 +2252,7 @@ var
   NewRanges: TFlexRanges;
   SrcIdx, TgtIdx: Integer;
   SrcDims, TgtDims: TFlexDimensions;
-  DimLen: Integer;
+  DimLens: array of Integer;
   SrcStride, TgtStride: array of Integer;
   Counters: array of Integer;
   idxA, idxB: Integer;
@@ -2322,23 +2322,32 @@ begin
   // 結果配列を作成（共通形状を使用）
   Result := TFlexArray<T>.CreateFromRange(NewRanges);
   SetLength(Counters, MaxDims);
+  SetLength(DimLens, MaxDims);
   idxA := 0;
   idxB := 0;
 
+  var r, s, t: TArray<T>;
+
+  r := Result.Data.FArray;
+  s := Source.Data.FArray;
+  t := Target.Data.FArray;
+
+  for i := 0 to MaxDims - 1 do
+   DimLens[i] := Result.Data.FDims[i].Len;
+
   for i := 0 to Result.TotalSize - 1 do
   begin
-    Result.Data.FArray[i] := AFunc(Source.Data.FArray[idxA], Target.Data.FArray[idxB]);
+    r[i] := AFunc(s[idxA], t[idxB]);
 
     // 次元数分Loop
     for d := MaxDims - 1 downto 0 do
     begin
-      DimLen := Result.Data.FDims[d].Len;
       Inc(Counters[d]);
 
       idxA := idxA + SrcStride[d];
       idxB := idxB + TgtStride[d];
 
-      if Counters[d] < DimLen then
+      if Counters[d] < DimLens[d] then
         // 繰り上がりなし（この次元だけ進んで終了）
         Break
       else
@@ -2347,8 +2356,8 @@ begin
         Counters[d] := 0;
 
         // 行き過ぎた分をまとめて巻き戻す
-        idxA := idxA - DimLen * SrcStride[d];
-        idxB := idxB - DimLen * TgtStride[d];
+        idxA := idxA - DimLens[d] * SrcStride[d];
+        idxB := idxB - DimLens[d] * TgtStride[d];
       end;
     end;
   end;
