@@ -11,9 +11,9 @@ uses
 type
 
   TFlexDimension = record
-    Low, High, Stride: Integer;
+    Low, Len, Stride: Integer;
 //    RealIndex: Integer; 論理転置用（対応しないことにする）
-    function Len: Integer; inline;
+    function High: Integer; inline;
   end;
   TFlexDimensions = TArray<TFlexDimension>;
   TFlexDimensionsHelper = record helper for TFlexDimensions
@@ -45,6 +45,8 @@ type
   public
     class function FromArray(const Coords: array of Integer): TCoords; static;
   end;
+
+  procedure IncCoordsWithIndex(var Coords: TCoords; var Index: Integer; const Dims: TFlexDimensions);
 
   type
   TFlexArray<T> = record
@@ -78,7 +80,7 @@ type
 
     // Filter用コールバック
     TFilterFunc<T> = reference to function(Value: T; Coords: TCoords): Boolean;
-  
+
     // Binary操作用コールバック
     TOperationFunc<T> = reference to function(L, R: T): T;
 
@@ -218,10 +220,10 @@ type
 
     // 座標イテレータ - for Coords in FlexArray.CoordsIterator do
     function CoordsIterator(Ranges: TFlexRanges = nil): TCoordsIterator;
-    
+
     // for-in ループ用列挙子
     function GetEnumerator: TFlexArrayEnumerator<T>;
-    
+
     // ブロードキャスト関数
     function Broadcast(Value: T; AFunc: TOperationFunc<T>): TFlexArray<T>; overload;
     function Broadcast(const Source: TFlexArray<T>; AFunc: TOperationFunc<T>): TFlexArray<T>; overload;
@@ -356,13 +358,13 @@ end;
 
 { TFlexDimension }
 //////////////////////////////////////////////////////////////////////////////////////
-// [概要] 対象次元の配列サイズを返す
+// [概要] 対象次元のHighを返す
 // [引数] なし
-// [戻値] 配列サイズ
+// [戻値] High
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexDimension.Len: Integer;
+function TFlexDimension.High: Integer;
 begin
-  Result := High - Low + 1;
+  Result := Low + Len - 1;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -550,7 +552,7 @@ begin
     Ranges[i].Check;
 
     Data.FDims[i].Low    := Ranges[i].Low;    // 0base
-    Data.FDims[i].High   := Ranges[i].High;
+    Data.FDims[i].Len   := Ranges[i].High - Ranges[i].Low + 1;
     Data.FDims[i].Stride := CurrentStride;
 //    Data.FDims[i].RealIndex := i;  // RealIndexを自然順序で初期化
 
@@ -2034,7 +2036,7 @@ begin
 
   // 列の形状チェック（列数とLow値の両方を確認）
   if ColLen <> AnotherColLen then
-    raise Exception.CreateFmt('VStack: 列数が一致しません (self: 列数=%d, another: 列数=%d)', 
+    raise Exception.CreateFmt('VStack: 列数が一致しません (self: 列数=%d, another: 列数=%d)',
       [ColLen, AnotherColLen]);
 
   // 配列を結合
@@ -2080,7 +2082,7 @@ begin
   Result := Default(TFlexArray<T>);
   Result.Data.FArray := Self.Data.FArray +  Another;
   Result.Data.FDims := Copy(Self.Data.FDims);
-  Result.Data.FDims[0].High := Self.Low + Result.TotalSize - 1;
+  Result.Data.FDims[0].Len := Result.TotalSize;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -2241,6 +2243,31 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
+// [概要] 座標をインクリメントし、線形インデックスも同時に更新する
+// [引数] Coords: 現在の座標配列, Index: 更新する線形インデックス, Dims: 次元情報
+// [戻値] なし
+// [備考] IncCoordsと同じ座標進め方。（高速化目的）
+//////////////////////////////////////////////////////////////////////////////////////
+procedure IncCoordsWithIndex(var Coords: TCoords; var Index: Integer; const Dims: TFlexDimensions);
+var
+  d: Integer;
+begin
+  // IncCoordsと同じ座標進め方
+  for d := system.High(Coords) downto 0 do
+  begin
+    Inc(Coords[d]);
+    Index := Index + Dims[d].Stride;
+
+    // 上限を超えていないなら終了
+    if Coords[d] <= Dims[d].High then Exit;
+
+    // 繰り上がり（行き過ぎた加算済みの次元を減算して巻き戻す）
+    Index := Index - Dims[d].Len * Dims[d].Stride;
+    Coords[d] := Dims[d].Low;
+  end;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
 // [概要] 2つの配列を次元をあわせて演算する
 // [引数] Source:演算対象の配列, Target:演算対象の配列, AFunc:要素ごとの演算を行うコールバック
 // [戻値] 演算適用後の新しい配列
@@ -2248,22 +2275,21 @@ end;
 class function TFlexArray<T>.BroadcastCore(Source: TFlexArray<T>; Target: TFlexArray<T>; AFunc: TOperationFunc<T>): TFlexArray<T>;
 var
   i, d, MaxDims: Integer;
-  Coords: TCoords;
+  SrcCoords, TgtCoords: TCoords;
   NewRanges: TFlexRanges;
   SrcIdx, TgtIdx: Integer;
   SrcDims, TgtDims: TFlexDimensions;
-  DimLens: array of Integer;
-  SrcStride, TgtStride: array of Integer;
-  Counters: array of Integer;
+  NewSrcDims, NewTgtDims: TFlexDimensions;
   idxA, idxB: Integer;
+  RetArr, SrcArr, TgtArr: TArray<T>;
 begin
   SrcDims := Source.Data.FDims;
   TgtDims := Target.Data.FDims;
 
   MaxDims := Max(Length(SrcDims), Length(TgtDims));
   SetLength(NewRanges, MaxDims);
-  SetLength(SrcStride, MaxDims);
-  SetLength(TgtStride, MaxDims);
+  SetLength(NewSrcDims, MaxDims);
+  SetLength(NewTgtDims, MaxDims);
 
   SrcIdx := Length(SrcDims) - 1;
   TgtIdx := Length(TgtDims) - 1;
@@ -2291,10 +2317,10 @@ begin
     end;
 
     if SrcDims[SrcIdx].Len > 1 then
-      SrcStride[d] := SrcDims[SrcIdx].Stride;
+      NewSrcDims[d].Stride := SrcDims[SrcIdx].Stride;
 
     if TgtDims[TgtIdx].Len > 1 then
-      TgtStride[d] := TgtDims[TgtIdx].Stride;
+      NewTgtDims[d].Stride := TgtDims[TgtIdx].Stride;
 
     Dec(SrcIdx);
     Dec(TgtIdx);
@@ -2306,7 +2332,7 @@ begin
     for d := SrcIdx downto 0 do
     begin
       NewRanges[d] := [SrcDims[d].Low, SrcDims[d].High];
-      SrcStride[d] := SrcDims[d].Stride;
+      NewSrcDims[d].Stride := SrcDims[d].Stride;
     end;
   end
   else if TgtIdx >= 0 then
@@ -2315,51 +2341,34 @@ begin
     for d := TgtIdx downto 0 do
     begin
       NewRanges[d] := [TgtDims[d].Low, TgtDims[d].High];
-      TgtStride[d] := TgtDims[d].Stride;
+      NewTgtDims[d].Stride := TgtDims[d].Stride;
     end;
   end;
 
   // 結果配列を作成（共通形状を使用）
   Result := TFlexArray<T>.CreateFromRange(NewRanges);
-  SetLength(Counters, MaxDims);
-  SetLength(DimLens, MaxDims);
+  Source.InitializeCoords(SrcCoords);
+  Target.InitializeCoords(TgtCoords);
   idxA := 0;
   idxB := 0;
 
-  var r, s, t: TArray<T>;
-
-  r := Result.Data.FArray;
-  s := Source.Data.FArray;
-  t := Target.Data.FArray;
+  RetArr := Result.Data.FArray;
+  SrcArr := Source.Data.FArray;
+  TgtArr := Target.Data.FArray;
 
   for i := 0 to MaxDims - 1 do
-   DimLens[i] := Result.Data.FDims[i].Len;
+  begin
+    NewSrcDims[i].Low:= Result.Data.FDims[i].Low;
+    NewSrcDims[i].Len:= Result.Data.FDims[i].Len;
+    NewTgtDims[i].Low:= Result.Data.FDims[i].Low;
+    NewTgtDims[i].Len:= Result.Data.FDims[i].Len;
+  end;
 
   for i := 0 to Result.TotalSize - 1 do
   begin
-    r[i] := AFunc(s[idxA], t[idxB]);
-
-    // 次元数分Loop
-    for d := MaxDims - 1 downto 0 do
-    begin
-      Inc(Counters[d]);
-
-      idxA := idxA + SrcStride[d];
-      idxB := idxB + TgtStride[d];
-
-      if Counters[d] < DimLens[d] then
-        // 繰り上がりなし（この次元だけ進んで終了）
-        Break
-      else
-      begin
-        // 繰り上がり（この次元をリセットして上位へ）
-        Counters[d] := 0;
-
-        // 行き過ぎた分をまとめて巻き戻す
-        idxA := idxA - DimLens[d] * SrcStride[d];
-        idxB := idxB - DimLens[d] * TgtStride[d];
-      end;
-    end;
+    RetArr[i] := AFunc(SrcArr[idxA], TgtArr[idxB]);
+    IncCoordsWithIndex(SrcCoords, idxA, NewSrcDims);
+    IncCoordsWithIndex(TgtCoords, idxB, NewTgtDims);
   end;
 end;
 
@@ -2451,3 +2460,4 @@ begin
 end;
 
 end.
+
