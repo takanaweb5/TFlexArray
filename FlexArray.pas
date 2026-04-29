@@ -836,18 +836,11 @@ var
   i: Integer;
   TargetDim: TFlexDimension;
 begin
-  if System.Length(Coords) <> Self.DimensionCount then
-    raise Exception.CreateFmt('GetOffset: 座標数が次元数と一致しません。Coords=%d, Dims=%d', [System.Length(Coords), Self.DimensionCount]);
-
   Result := 0;
   for i := 0 to Self.DimensionCount - 1 do
   begin
     TargetDim := Data.FDims[i];
-    if (TargetDim.Low <= Coords[i]) and (Coords[i] <= TargetDim.High) then
-      Result := Result + (Integer(Coords[i]) - TargetDim.Low) * TargetDim.Stride
-    else
-      raise Exception.CreateFmt('GetOffset: 範囲外です。Dim=%d, Value=%d, Range=%d..%d',
-                 [i + 1, Coords[i], TargetDim.Low, TargetDim.High]);
+    Result := Result + (Coords[i] - TargetDim.Low) * TargetDim.Stride
   end;
 end;
 
