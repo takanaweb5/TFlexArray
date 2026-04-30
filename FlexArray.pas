@@ -815,6 +815,7 @@ function TFlexArray<T>.GetCoords(LinearIndex: Integer): TCoords;
 var
   i: Integer;
   TempIndex: Integer;
+  TargetDim: TFlexDimension;
 begin
   SetLength(Result, Self.DimensionCount);
   TempIndex := LinearIndex;
@@ -822,8 +823,9 @@ begin
   // 末尾の次元から順に割っていく（GetOffsetの逆工程）
   for i := system.Length(Result) - 1 downto 0 do
   begin
-    Result[i] := (TempIndex mod Data.FDims[i].Len) + Data.FDims[i].Low; // 論理次元アクセス
-    TempIndex := TempIndex div Data.FDims[i].Len;
+    TargetDim := Data.FDims[i];
+    Result[i] := (TempIndex mod TargetDim.Len) + TargetDim.Low; // 論理次元アクセス
+    TempIndex := TempIndex div TargetDim.Len;
   end;
 end;
 
@@ -839,7 +841,7 @@ var
   TargetDim: TFlexDimension;
 begin
   Result := 0;
-  for i := 0 to Self.DimensionCount - 1 do
+  for i := 0 to System.Length(Coords) - 1 do
   begin
     TargetDim := Data.FDims[i];
     Result := Result + (Coords[i] - TargetDim.Low) * TargetDim.Stride
