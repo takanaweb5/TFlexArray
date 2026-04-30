@@ -1935,11 +1935,11 @@ begin
   SetLength(MappedDims, Length(NewDims));
   for i := 0 to system.High(NewDims) do
   begin
-    // 結果のLow,Highを設定するがstrideのみ元の値を適用させる
+    // Low/Lenは転置後の形状に合わせ、Strideのみ元の次元のものを使う
     d := NewDims[i] - 1; // 1-based → 0-based
     MappedDims[i].Low    := NewRanges[i].Low;
     MappedDims[i].Len    := NewRanges[i].Len;
-    // ★ここが本質(元のStrideを適用する)
+    // 元のStrideを使うことで、座標進行時に元配列の正しいメモリ位置を参照できる
     MappedDims[i].Stride := SrcDims[d].Stride;
   end;
 
@@ -2369,8 +2369,6 @@ begin
 
   // 結果配列を作成（共通形状を使用）
   Result := TFlexArray<T>.CreateFromRange(NewRanges);
-  Source.InitializeCoords(SrcCoords);
-  Target.InitializeCoords(TgtCoords);
   idxA := 0;
   idxB := 0;
 
@@ -2380,15 +2378,20 @@ begin
 
   for i := 0 to MaxDims - 1 do
   begin
+    // Low, LenはどちらもResultと同じ
     NewSrcDims[i].Low:= Result.Data.FDims[i].Low;
     NewSrcDims[i].Len:= Result.Data.FDims[i].Len;
     NewTgtDims[i].Low:= Result.Data.FDims[i].Low;
     NewTgtDims[i].Len:= Result.Data.FDims[i].Len;
   end;
 
+  Result.InitializeCoords(SrcCoords);
+  Result.InitializeCoords(TgtCoords);
   for i := 0 to Result.TotalSize - 1 do
   begin
     RetArr[i] := AFunc(SrcArr[idxA], TgtArr[idxB]);
+    // Low, LenはSourceもTargetも同じでSrcCoordsとTgtCoordsは絶えず同じ座標を指す
+    // サイズ1の次元はStrideを0にして空回りさせ、他の次元は元のStrideを適用
     IncCoordsWithIndex(SrcCoords, idxA, NewSrcDims);
     IncCoordsWithIndex(TgtCoords, idxB, NewTgtDims);
   end;
