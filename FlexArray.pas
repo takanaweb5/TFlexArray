@@ -113,7 +113,7 @@ type
     function GetCompatibleBaseIndex(const Another: TFlexArray<T>): Integer;
     function RangesStringToRanges(RangeStr: string): TFlexRanges;
     function ShapesToRanges(const Shapes: array of Integer; BaseIndex: Integer): TFlexRanges;
-    procedure LogicalTranspose(const NewDims: array of Integer);
+//    procedure LogicalTranspose(const NewDims: array of Integer);
     function TransposeCore(const NewDims: array of Integer): TFlexArray<T>;
     function InsertDimCore(Dim: Integer; Index: Integer; const Another: TFlexArray<T>): TFlexArray<T>;
     function DeleteDimCore(Dim: Integer; const Range: TFlexRange): TFlexArray<T>;
@@ -1893,16 +1893,16 @@ end;
 // [引数] NewDims: 新しい次元の順序（1-based）、指定例：[3, 1, 2]
 // [戻値] なし
 //////////////////////////////////////////////////////////////////////////////////////
-procedure TFlexArray<T>.LogicalTranspose(const NewDims: array of Integer);
-var
-  i: Integer;
-  NewFDims: TFlexDimensions;
-begin
-  SetLength(NewFDims, DimensionCount);
-  for i := 0 to DimensionCount - 1 do
-    NewFDims[i] := Data.FDims[NewDims[i] - 1];  // 1-based -> 0-based
-  Data.FDims := NewFDims;
-end;
+//procedure TFlexArray<T>.LogicalTranspose(const NewDims: array of Integer);
+//var
+//  i: Integer;
+//  NewFDims: TFlexDimensions;
+//begin
+//  SetLength(NewFDims, DimensionCount);
+//  for i := 0 to DimensionCount - 1 do
+//    NewFDims[i] := Data.FDims[NewDims[i] - 1];  // 1-based -> 0-based
+//  Data.FDims := NewFDims;
+//end;
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 配列の次元を入れ替え
@@ -1912,26 +1912,46 @@ end;
 //////////////////////////////////////////////////////////////////////////////////////
 function TFlexArray<T>.TransposeCore(const NewDims: array of Integer): TFlexArray<T>;
 var
-  i: Integer;
+  i, d: Integer;
+  NewRanges: TFlexRanges;
+  SrcDims, MappedDims: TFlexDimensions;
   Coords: TCoords;
-  bak: TFlexDimensions;
+  idx: Integer;
+  RetArr, SrcArr: TArray<T>;
 begin
-  bak := Copy(Data.FDims);
-  try
-    // FDimsの順番を入れ替え
-    LogicalTranspose(NewDims);
-    // 入替え後のFDimsを利用し、結果を作成
-    Result := TFlexArray<T>.CreateFromRange(GetRanges);
+  SrcDims := Data.FDims;
 
-    // FDims入替え後のselfを利用して値を結果に設定
-    Self.InitializeCoords(Coords);
-    for i := 0 to Result.TotalSize - 1 do
-    begin
-      Result.Data.FArray[i] := Self.ItemAt[Coords];
-      Self.IncCoords(Coords);
-    end;
-  finally
-    Data.FDims := bak;
+  // 結果配列の形状を転置状態で構築
+  SetLength(NewRanges, Length(NewDims));
+  for i := 0 to system.High(NewDims) do
+  begin
+    d := NewDims[i] - 1; // 1-based → 0-based
+    NewRanges[i] := [SrcDims[d].Low, SrcDims[d].High];
+  end;
+
+  // 転置用Strideを構築
+  SetLength(MappedDims, Length(NewDims));
+  for i := 0 to system.High(NewDims) do
+  begin
+    // 結果のLow,Highを設定するがstrideのみ元の値を適用させる
+    d := NewDims[i] - 1; // 1-based → 0-based
+    MappedDims[i].Low    := NewRanges[i].Low;
+    MappedDims[i].Len    := NewRanges[i].Len;
+    // ★ここが本質(元のStrideを適用する)
+    MappedDims[i].Stride := SrcDims[d].Stride;
+  end;
+
+  // 結果配列を作成
+  Result := TFlexArray<T>.CreateFromRange(NewRanges);
+  RetArr := Result.Data.FArray;
+  SrcArr := Self.Data.FArray;
+
+  Result.InitializeCoords(Coords);
+  idx := 0;
+  for i := 0 to Result.TotalSize - 1 do
+  begin
+    RetArr[i] := SrcArr[idx];
+    IncCoordsWithIndex(Coords, idx, MappedDims);
   end;
 end;
 
