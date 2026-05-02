@@ -120,6 +120,7 @@ type
     function SliceCore(const Ranges: TFlexRanges): TFlexArray<T>;
     function SliceIndexedCore(const Indexes: TArray<TSliceIndexes>; BaseIndex: Integer = 0): TFlexArray<T>;
     class function BroadcastCore(Source: TFlexArray<T>; Target: TFlexArray<T>; AFunc: TOperationFunc<T>): TFlexArray<T>; static;
+    class function CopyContiguousMemory(const SrcArray: TArray<T>; var DstArray: TArray<T>; SrcLow, Index, Stride, Len, DstOffset: Integer): Integer; static;
 
   public
     constructor Create(const Shapes: array of Integer; BaseIndex: Integer = 0); overload; // nD
@@ -1347,6 +1348,10 @@ var
   NewRanges: TFlexRanges;
   TargetDim: TFlexDimension;
   MappedIndexes: TArray<TSliceIndexes>;
+  IsContiguous: Boolean;
+  DstOffset: Integer;
+  TgtIdxs: TSliceIndexes;
+  SrcArr, DstArr: TArray<T>;
 begin
   for i := 0 to System.High(Indexes) do
     Indexes[i].Check(Data.FDims[i]);
@@ -1363,33 +1368,67 @@ begin
       NewRanges[i] := [0, System.Length(Indexes[i]) - 1];
   end;
 
-  // []をLow..Highに展開
-  MappedIndexes := Copy(Indexes);
-  for i := 0 to System.High(Indexes) do
+  Result := TFlexArray<T>.CreateFromRange(NewRanges);
+
+  // 内側の次元がすべて全範囲であるか判定
+  IsContiguous := True;
+  for i := 1 to System.High(NewRanges) do
   begin
-    TargetDim := Self.Data.FDims[i];
-    if System.Length(Indexes[i]) = 0 then
+    if System.Length(Indexes[i]) > 0 then
     begin
-      // []の場合はLow..Highに展開
-      SetLength(MappedIndexes[i], TargetDim.Len);
-      for d := 0 to TargetDim.Len - 1 do
-        MappedIndexes[i][d] := TargetDim.Low + d;
+      IsContiguous := False;
+      Break;
     end;
   end;
 
-  Result := TFlexArray<T>.CreateFromRange(NewRanges);
-  Result.InitializeCoords(ResultCoords);
-  SetLength(SelfCoords, Self.DimensionCount);
-
-  // Resultの座標イテレーションで、Selfから対応する要素を取得
-  for i := 0 to Result.TotalSize - 1 do
+  if IsContiguous then
   begin
-    // 引数のIndexesをSelfの座標に変換
-    for d := 0 to System.High(ResultCoords) do
-      SelfCoords[d] := MappedIndexes[d][ResultCoords[d]];
+    // 最外側の次元の連続領域を高速コピーする。
+    TargetDim := Self.Data.FDims[0];
+    TgtIdxs := Indexes[0];
+    SrcArr := Self.Data.FArray;
+    DstArr := Result.Data.FArray;
+    DstOffset := 0;
+    for i := 0 to System.Length(TgtIdxs) - 1 do
+    begin
+      DstOffset := CopyContiguousMemory(
+        SrcArr, DstArr,
+        TargetDim.Low,
+        TgtIdxs[i],
+        TargetDim.Stride,
+        1,
+        DstOffset);
+    end;
+  end
+  else
+  begin
+    // []をLow..Highに展開
+    MappedIndexes := Copy(Indexes);
+    for i := 0 to System.High(Indexes) do
+    begin
+      TargetDim := Self.Data.FDims[i];
+      if System.Length(Indexes[i]) = 0 then
+      begin
+        // []の場合はLow..Highに展開
+        SetLength(MappedIndexes[i], TargetDim.Len);
+        for d := 0 to TargetDim.Len - 1 do
+          MappedIndexes[i][d] := TargetDim.Low + d;
+      end;
+    end;
 
-    Result.Data.FArray[i] := Self.ItemAt[SelfCoords];
-    Result.IncCoords(ResultCoords);
+    Result.InitializeCoords(ResultCoords);
+    SetLength(SelfCoords, Self.DimensionCount);
+
+    // Resultの座標イテレーションで、Selfから対応する要素を取得
+    for i := 0 to Result.TotalSize - 1 do
+    begin
+      // 引数のIndexesをSelfの座標に変換
+      for d := 0 to System.High(ResultCoords) do
+        SelfCoords[d] := MappedIndexes[d][ResultCoords[d]];
+
+      Result.Data.FArray[i] := Self.ItemAt[SelfCoords];
+      Result.IncCoords(ResultCoords);
+    end;
   end;
 
   // 要素数1の次元を後方からDemoteDimensionで処理
@@ -1403,6 +1442,26 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
+// [概要] 連続したメモリ領域をコピーするstatic関数
+// [引数] SrcArray - コピー元の配列, DstArray - コピー先の配列
+//        SrcLow - 元のLow, Index - インデックス
+//        Stride - ストライド, Len - 要素数
+//        DstOffset - コピー先のオフセット（入力）
+// [戻値] 更新されたコピー先オフセット（次のコピー位置）
+//////////////////////////////////////////////////////////////////////////////////////
+class function TFlexArray<T>.CopyContiguousMemory(
+  const SrcArray: TArray<T>; var DstArray: TArray<T>; SrcLow, Index, Stride, Len, DstOffset: Integer): Integer;
+var
+  SrcOffset: Integer;
+  CopyLen: Integer;
+begin
+  SrcOffset := (Index - SrcLow) * Stride;
+  CopyLen := Len * Stride;
+  TArray.Copy<T>(SrcArray, DstArray, SrcOffset, DstOffset, CopyLen);
+  Result := DstOffset + CopyLen;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
 // [概要] スライス範囲からResult配列を作成し、Selfから要素をコピーするコア関数
 // [引数] Ranges - スライス範囲を表現する次元情報
 // [戻値] スライスされた配列
@@ -1410,9 +1469,10 @@ end;
 function TFlexArray<T>.SliceCore(const Ranges: TFlexRanges): TFlexArray<T>;
 var
   i: Integer;
-  ResultCoords: TCoords;
   NewRanges: TFlexRanges;
   TargetDim: TFlexDimension;
+  IsContiguous: Boolean;
+  ResultCoords: TCoords;
 begin
   Ranges.Check(Data.FDims);
 
@@ -1428,13 +1488,44 @@ begin
   end;
 
   Result := TFlexArray<T>.CreateFromRange(NewRanges);
-  Result.InitializeCoords(ResultCoords);
 
-  // Resultの座標イテレーションで、Selfからスライス範囲の要素を取得
-  for i := 0 to Result.TotalSize - 1 do
+  // 内側の次元がすべて全範囲であるか判定
+  IsContiguous := True;
+  for i := 1 to System.High(NewRanges) do
   begin
-    Result.Data.FArray[i] := Self.ItemAt[ResultCoords];
-    Result.IncCoords(ResultCoords);
+    if NewRanges[i].Len < Self.Data.FDims[i].Len then
+    begin
+      IsContiguous := False;
+      Break;
+    end;
+  end;
+
+  if IsContiguous then
+  begin
+    // メモリ領域が連続している場合：TArray.Copyで最速コピー
+    CopyContiguousMemory(
+      Self.Data.FArray,
+      Result.Data.FArray,
+      Self.Data.FDims[0].Low,
+      NewRanges[0].Low,
+      Self.Data.FDims[0].Stride,
+      NewRanges[0].Len,
+      0);
+  end
+  else
+  begin
+    // 連続していない場合1つずつ設定する
+    Result.InitializeCoords(ResultCoords);
+
+    var arr := Result.Data.FArray;
+    var RetArr := Self.Data.FArray;
+    // Resultの座標イテレーションで、Selfからスライス範囲の要素を取得
+    for i := 0 to Result.TotalSize - 1 do
+    begin
+       Result.Data.FArray[i] := Self.ItemAt[ResultCoords];
+//       arr[i] := RetArr[GetOffset(ResultCoords)];
+      Result.IncCoords(ResultCoords);
+    end;
   end;
 
   // つぶす次元を後方からDemoteDimensionで処理
@@ -1461,6 +1552,8 @@ var
   IsAnotherArea: TFlexArray<Boolean>;
   i, d, bak: Integer;
   SelfDim, AnotherDim: TFlexDimension;
+  SelfArr, AnotherArr, DstArr: TArray<T>;
+  DstOffset: Integer;
 begin
   // 1-based to 0-based
   DimIdx := Dim - 1;
@@ -1496,50 +1589,80 @@ begin
   // 対象次元のサイズを拡張（Selfのサイズ + Anotherのサイズ）
   NewRanges[DimIdx] := [Self.Low(Dim), Self.High(Dim) + Another.Len(Dim)];
 
-  // MappedIndexesを作成 - Resultの次元インデックスをソースインデックスにマッピング
-  MappedIndexes := TFlexArray<Integer>.CreateFromRange(NewRanges[DimIdx]);
-  IsAnotherArea := TFlexArray<Boolean>.CreateFromRange(NewRanges[DimIdx]); // デフォルトはFalse
-
-  // 前半部：Selfのインデックスをマッピング
-  d := Self.Low(Dim);
-  for i := Self.Low(Dim) to Index - 1 do
-  begin
-    MappedIndexes[d] := i;
-    Inc(d);
-  end;
-
-  // 中間部：Anotherのインデックスをマッピングし、IsAnotherAreaをTrueに設定
-  for i := Another.Low(Dim) to Another.High(Dim) do
-  begin
-    MappedIndexes[d] := i;
-    IsAnotherArea[d] := True;
-    Inc(d);
-  end;
-
-  // 後半部：Selfの残りのインデックスをマッピング
-  for i := Index to Self.High(Dim) do
-  begin
-    MappedIndexes[d] := i;
-    Inc(d);
-  end;
-
   // 結果配列を作成
   Result := TFlexArray<T>.CreateFromRange(NewRanges);
   Result.InitializeCoords(ResultCoords);
 
-  // 線形反復でデータをコピー
-  for i := 0 to Result.TotalSize - 1 do
+  if Dim = 1 then
   begin
-    bak := ResultCoords[DimIdx];
-    ResultCoords[DimIdx] := MappedIndexes[bak];
+    SelfDim := Self.Data.FDims[0];
+    AnotherDim := Another.Data.FDims[0];
+    SelfArr := Self.Data.FArray;
+    AnotherArr := Another.Data.FArray;
+    DstArr := Result.Data.FArray;
+    DstOffset := 0;
 
-    if IsAnotherArea[bak] then
-      Result.Data.FArray[i] := Another.ItemAt[ResultCoords]
-    else
-      Result.Data.FArray[i] := Self.ItemAt[ResultCoords];
+    // 前半部：挿入位置の手前
+    if Index > SelfDim.Low then
+    begin
+      DstOffset := CopyContiguousMemory(SelfArr, DstArr, SelfDim.Low, SelfDim.Low, SelfDim.Stride,
+        Index - SelfDim.Low, DstOffset);
+    end;
 
-    ResultCoords[DimIdx] := bak;
-    Result.IncCoords(ResultCoords);
+    // 挿入ブロック：Another
+    DstOffset := CopyContiguousMemory(AnotherArr, DstArr, AnotherDim.Low, AnotherDim.Low, AnotherDim.Stride,
+      AnotherDim.Len, DstOffset);
+
+    // 後半部：挿入位置以降
+    if Index <= SelfDim.High then
+    begin
+      CopyContiguousMemory(SelfArr, DstArr, SelfDim.Low, Index, SelfDim.Stride,
+        SelfDim.High + 1 - Index, DstOffset);
+    end;
+  end
+  else
+  begin
+    // MappedIndexesを作成 - Resultの次元インデックスをソースインデックスにマッピング
+    MappedIndexes := TFlexArray<Integer>.CreateFromRange(NewRanges[DimIdx]);
+    IsAnotherArea := TFlexArray<Boolean>.CreateFromRange(NewRanges[DimIdx]); // デフォルトはFalse
+
+    // 前半部：Selfのインデックスをマッピング
+    d := Self.Low(Dim);
+    for i := Self.Low(Dim) to Index - 1 do
+    begin
+      MappedIndexes[d] := i;
+      Inc(d);
+    end;
+
+    // 中間部：Anotherのインデックスをマッピングし、IsAnotherAreaをTrueに設定
+    for i := Another.Low(Dim) to Another.High(Dim) do
+    begin
+      MappedIndexes[d] := i;
+      IsAnotherArea[d] := True;
+      Inc(d);
+    end;
+
+    // 後半部：Selfの残りのインデックスをマッピング
+    for i := Index to Self.High(Dim) do
+    begin
+      MappedIndexes[d] := i;
+      Inc(d);
+    end;
+
+    // 線形反復でデータをコピー
+    for i := 0 to Result.TotalSize - 1 do
+    begin
+      bak := ResultCoords[DimIdx];
+      ResultCoords[DimIdx] := MappedIndexes[bak];
+
+      if IsAnotherArea[bak] then
+        Result.Data.FArray[i] := Another.ItemAt[ResultCoords]
+      else
+        Result.Data.FArray[i] := Self.ItemAt[ResultCoords];
+
+      ResultCoords[DimIdx] := bak;
+      Result.IncCoords(ResultCoords);
+    end;
   end;
 end;
 
@@ -1783,6 +1906,9 @@ var
   ResultCoords: TCoords;
   MappedIndexes: TFlexArray<Integer>;
   i, d, bak: Integer;
+  DstOffset: Integer;
+  TargetDim: TFlexDimension;
+  SrcArr, DstArr: TArray<T>;
 begin
   // 1-based to 0-based
   DimIdx := Dim - 1;
@@ -1805,35 +1931,71 @@ begin
   NewRanges := Self.GetRanges;
   NewRanges[DimIdx] := [Self.Low(Dim), Self.High(Dim) - Range.Len];
 
-  // MappedIndexesを作成 - Resultの次元インデックスをソースインデックスにマッピング
-  MappedIndexes := TFlexArray<Integer>.CreateFromRange(NewRanges[DimIdx]);
-
-  // 前半部：Selfのインデックスをマッピング（削除範囲の前）
-  d := Self.Low(Dim);
-  for i := Self.Low(Dim) to Range.Low - 1 do
-  begin
-    MappedIndexes[d] := i;
-    Inc(d);
-  end;
-
-  // 後半部：Selfの残りのインデックスをマッピング（削除範囲の後）
-  for i := Range.High + 1 to Self.High(Dim) do
-  begin
-    MappedIndexes[d] := i;
-    Inc(d);
-  end;
-
   // 結果配列を作成
   Result := TFlexArray<T>.CreateFromRange(NewRanges);
-  Result.InitializeCoords(ResultCoords);
 
-  for i := 0 to Result.TotalSize - 1 do
+  if Dim = 1 then
   begin
-    bak := ResultCoords[DimIdx];
-    ResultCoords[DimIdx] := MappedIndexes[bak];
-    Result.Data.FArray[i] := Self.ItemAt[ResultCoords];
-    ResultCoords[DimIdx] := bak;
-    Result.IncCoords(ResultCoords);
+    // 連続領域を高速コピーする。削除範囲の前半部と後半部をコピー
+    TargetDim := Self.Data.FDims[0];
+    SrcArr := Self.Data.FArray;
+    DstArr := Result.Data.FArray;
+    DstOffset := 0;
+
+    // 前半部：削除範囲の前
+    if Range.Low - TargetDim.Low > 0 then
+    begin
+      DstOffset := CopyContiguousMemory(
+        SrcArr, DstArr,
+        TargetDim.Low,
+        TargetDim.Low,
+        TargetDim.Stride,
+        Range.Low - TargetDim.Low,
+        DstOffset);
+    end;
+
+    // 後半部：削除範囲の後
+    if TargetDim.High - Range.High > 0 then
+    begin
+      CopyContiguousMemory(
+        SrcArr, DstArr,
+        TargetDim.Low,
+        Range.High + 1,
+        TargetDim.Stride,
+        TargetDim.High - Range.High,
+        DstOffset);
+    end;
+  end
+  else
+  begin
+    // MappedIndexesを作成 - Resultの次元インデックスをソースインデックスにマッピング
+    MappedIndexes := TFlexArray<Integer>.CreateFromRange(NewRanges[DimIdx]);
+
+    // 前半部：Selfのインデックスをマッピング（削除範囲の前）
+    d := Self.Low(Dim);
+    for i := Self.Low(Dim) to Range.Low - 1 do
+    begin
+      MappedIndexes[d] := i;
+      Inc(d);
+    end;
+
+    // 後半部：Selfの残りのインデックスをマッピング（削除範囲の後）
+    for i := Range.High + 1 to Self.High(Dim) do
+    begin
+      MappedIndexes[d] := i;
+      Inc(d);
+    end;
+
+    Result.InitializeCoords(ResultCoords);
+
+    for i := 0 to Result.TotalSize - 1 do
+    begin
+      bak := ResultCoords[DimIdx];
+      ResultCoords[DimIdx] := MappedIndexes[bak];
+      Result.Data.FArray[i] := Self.ItemAt[ResultCoords];
+      ResultCoords[DimIdx] := bak;
+      Result.IncCoords(ResultCoords);
+    end;
   end;
 end;
 
@@ -2304,6 +2466,7 @@ var
   NewSrcDims, NewTgtDims: TFlexDimensions;
   idxA, idxB: Integer;
   RetArr, SrcArr, TgtArr: TArray<T>;
+  SameShape: Boolean;
 begin
   SrcDims := Source.Data.FDims;
   TgtDims := Target.Data.FDims;
@@ -2376,24 +2539,48 @@ begin
   SrcArr := Source.Data.FArray;
   TgtArr := Target.Data.FArray;
 
-  for i := 0 to MaxDims - 1 do
+  SameShape := Length(SrcDims) = Length(TgtDims);
+  if SameShape then
   begin
-    // Low, LenはどちらもResultと同じ
-    NewSrcDims[i].Low:= Result.Data.FDims[i].Low;
-    NewSrcDims[i].Len:= Result.Data.FDims[i].Len;
-    NewTgtDims[i].Low:= Result.Data.FDims[i].Low;
-    NewTgtDims[i].Len:= Result.Data.FDims[i].Len;
+    for i := 0 to MaxDims - 1 do
+    begin
+      if (SrcDims[i].Len <> TgtDims[i].Len) or
+         (SrcDims[i].Stride <> TgtDims[i].Stride) then
+      begin
+        SameShape := False;
+        Break;
+      end;
+    end;
   end;
 
-  Result.InitializeCoords(SrcCoords);
-  Result.InitializeCoords(TgtCoords);
-  for i := 0 to Result.TotalSize - 1 do
+  if SameShape then
   begin
-    RetArr[i] := AFunc(SrcArr[idxA], TgtArr[idxB]);
-    // Low, LenはSourceもTargetも同じでSrcCoordsとTgtCoordsは絶えず同じ座標を指す
-    // サイズ1の次元はStrideを0にして空回りさせ、他の次元は元のStrideを適用
-    IncCoordsWithIndex(SrcCoords, idxA, NewSrcDims);
-    IncCoordsWithIndex(TgtCoords, idxB, NewTgtDims);
+    // 全次元でLenとStrideが一致する場合（同一メモリレイアウトのため最速ループ）
+    for i := 0 to Result.TotalSize - 1 do
+      RetArr[i] := AFunc(SrcArr[i], TgtArr[i]);
+  end
+  else
+  begin
+    for i := 0 to MaxDims - 1 do
+    begin
+      // Low, LenはどちらもResultと同じ
+      NewSrcDims[i].Low:= Result.Data.FDims[i].Low;
+      NewSrcDims[i].Len:= Result.Data.FDims[i].Len;
+      NewTgtDims[i].Low:= Result.Data.FDims[i].Low;
+      NewTgtDims[i].Len:= Result.Data.FDims[i].Len;
+    end;
+
+    Result.InitializeCoords(SrcCoords);
+    Result.InitializeCoords(TgtCoords);
+
+    for i := 0 to Result.TotalSize - 1 do
+    begin
+      RetArr[i] := AFunc(SrcArr[idxA], TgtArr[idxB]);
+      // Low, LenはSourceもTargetも同じでSrcCoordsとTgtCoordsは絶えず同じ座標を指す
+      // サイズ1の次元はStrideを0にして空回りさせ、他の次元は元のStrideを適用
+      IncCoordsWithIndex(SrcCoords, idxA, NewSrcDims);
+      IncCoordsWithIndex(TgtCoords, idxB, NewTgtDims);
+    end;
   end;
 end;
 
@@ -2433,10 +2620,13 @@ end;
 class function TFlexArray<T>.Broadcast(const Source: TFlexArray<T>; Value: T; AFunc: TOperationFunc<T>): TFlexArray<T>;
 var
   i: Integer;
+  RetArr, Arr: TArray<T>;
 begin
   Result := TFlexArray<T>.CreateFromRange(Source.GetRanges);
+  Arr := Source.Data.FArray;
+  RetArr := Result.Data.FArray;
   for i := 0 to Result.TotalSize - 1 do
-    Result.Data.FArray[i] := AFunc(Source.Data.FArray[i], Value);
+    RetArr[i] := AFunc(Arr[i], Value);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -2455,10 +2645,13 @@ end;
 class function TFlexArray<T>.Broadcast(Value: T; const Target: TFlexArray<T>; AFunc: TOperationFunc<T>): TFlexArray<T>;
 var
   i: Integer;
+  RetArr, Arr: TArray<T>;
 begin
   Result := TFlexArray<T>.CreateFromRange(Target.GetRanges);
+  Arr := Target.Data.FArray;
+  RetArr := Result.Data.FArray;
   for i := 0 to Result.TotalSize - 1 do
-    Result.Data.FArray[i] := AFunc(Value, Target.Data.FArray[i]);
+    RetArr[i] := AFunc(Value, Arr[i]);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
