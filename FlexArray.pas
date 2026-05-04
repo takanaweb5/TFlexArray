@@ -115,7 +115,7 @@ type
     function ShapesToRanges(const Shapes: array of Integer; BaseIndex: Integer): TFlexRanges;
 //    procedure LogicalTranspose(const NewDims: array of Integer);
     function TransposeCore(const NewDims: array of Integer): TFlexArray<T>;
-    function InsertDimCore(Dim: Integer; Index: Integer; const Another: TFlexArray<T>): TFlexArray<T>;
+    function InsertCore(Dim: Integer; Index: Integer; const Another: TFlexArray<T>): TFlexArray<T>;
     function DeleteDimCore(Dim: Integer; const Range: TFlexRange): TFlexArray<T>;
     function SliceCore(const Ranges: TFlexRanges): TFlexArray<T>;
     function SliceIndexedCore(const Indexes: TArray<TSliceIndexes>; BaseIndex: Integer = 0): TFlexArray<T>;
@@ -123,19 +123,19 @@ type
     class function CopyContiguousMemory(const SrcArray: TArray<T>; var DstArray: TArray<T>; SrcLow, Index, Stride, Len, DstOffset: Integer): Integer; static;
 
   public
-    constructor Create(const Shapes: array of Integer; BaseIndex: Integer = 0); overload; // nD
-    constructor CreateFromRange(const Range: TFlexRange); overload; // 1D
+    constructor Create(const Shapes: array of Integer; BaseIndex: Integer = 0); // nD
     constructor CreateFromRange(const Ranges: TFlexRanges); overload; // nD
     constructor CreateFromRange(RangeStr: string); overload;
-    constructor CreateFromFlexArray(const Src: TFlexArray<T>); overload;
-    constructor CreateFromArray(const Src: TArray<T>; BaseIndex: Integer = 0); overload;
-    constructor ViewFromArray(const Src: TArray<T>; BaseIndex: Integer = 0); overload;
+    constructor Clone(const Src: TFlexArray<T>);
+    constructor CreateFromArray(const Src: TArray<T>; BaseIndex: Integer = 0);
+    constructor ViewFromArray(const Src: TArray<T>; BaseIndex: Integer = 0);
 
     function Low: Integer; overload;  // 1D
     function High: Integer; overload; // 1D
+    function Len: Integer; overload; // 1D
     function Low(Dim: Integer): Integer; overload; // nD
     function High(Dim: Integer): Integer; overload; // nD
-    function Len(Dim: Integer): Integer;
+    function Len(Dim: Integer): Integer; overload; // 1D
     function IsView: Boolean;
 
     function GetCoords(LinearIndex: Integer): TCoords;
@@ -171,13 +171,13 @@ type
     function SliceIndexed(const Indexes: TArray<TSliceIndexes>; BaseIndex: Integer = 0): TFlexArray<T>;
 
     // 2D配列の行・列挿入
-    function InsertRow(RowIndex: Integer; const Another: TFlexArray<T>): TFlexArray<T>; overload; // 2D
-    function InsertCol(ColIndex: Integer; const Another: TFlexArray<T>): TFlexArray<T>; overload; // 2D
-    function InsertRow(RowIndex: Integer; const Items: TArray<T>): TFlexArray<T>; overload; // 2D
-    function InsertCol(ColIndex: Integer; const Items: TArray<T>): TFlexArray<T>; overload; // 2D
-    function InsertRows(RowIndex: Integer; const Another: TFlexArray<T>): TFlexArray<T>; // 2D
-    function InsertCols(ColIndex: Integer; const Another: TFlexArray<T>): TFlexArray<T>; // 2D
-    function InsertDim(Dim: Integer; Index: Integer; const Items: TFlexArray<T>): TFlexArray<T>; // nD
+//    function InsertRow(RowIndex: Integer; const Another: TFlexArray<T>): TFlexArray<T>; overload; // 2D
+//    function InsertCol(ColIndex: Integer; const Another: TFlexArray<T>): TFlexArray<T>; overload; // 2D
+    function InsertRow(RowIndex: Integer; const AArray: TArray<T>): TFlexArray<T>; overload; // 2D
+    function InsertCol(ColIndex: Integer; const AArray: TArray<T>): TFlexArray<T>; overload; // 2D
+    function InsertRows(RowIndex: Integer; const FlexArray: TFlexArray<T>): TFlexArray<T>; // 2D
+    function InsertCols(ColIndex: Integer; const FlexArray: TFlexArray<T>): TFlexArray<T>; // 2D
+    function Insert(Dim: Integer; Index: Integer; const FlexArray: TFlexArray<T>): TFlexArray<T>; // nD
 
     // 2D配列の行・列削除
     function DeleteRow(RowIndex: Integer): TFlexArray<T>; // 2D
@@ -576,17 +576,6 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
-// [概要] 1次元用範囲指定コンストラクタ
-// [引数] 範囲配列 [Low, High]
-// [戻値] なし
-// [使用例] TFlexArray<Integer>.CreateFromRange([-5, 5])  // -5から5までの11要素
-//////////////////////////////////////////////////////////////////////////////////////
-constructor TFlexArray<T>.CreateFromRange(const Range: TFlexRange);
-begin
-  SetLength(Data.FArray, InitializeDimensions([Range]));
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
 // [概要] 多次元用範囲指定コンストラクタ
 // [引数] 各次元の範囲配列 [[Low, High], ...]
 // [戻値] なし
@@ -615,7 +604,7 @@ end;
 // [戻値] なし
 // [使用例] TFlexArray<Integer>.CreateFromFlexArray(arr, 1)
 //////////////////////////////////////////////////////////////////////////////////////
-constructor TFlexArray<T>.CreateFromFlexArray(const Src: TFlexArray<T>);
+constructor TFlexArray<T>.Clone(const Src: TFlexArray<T>);
 begin
   Data.FDims := Copy(Src.Data.FDims);
   Data.FArray := Copy(Src.Data.FArray);
@@ -1056,16 +1045,6 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
-// [概要] 指定次元の配列サイズを返す
-// [引数] 対象次元 1base
-// [戻値] 配列サイズ
-//////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.Len(Dim: Integer): Integer;
-begin
-  Result := Data.FDims.Items[Dim].Len;
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
 // [概要] 1次元配列の最小インデックスを取得
 // [引数] なし
 // [戻値] 最小インデックス
@@ -1090,6 +1069,18 @@ begin
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
+// [概要] 1次元配列の配列サイズを返す
+// [引数] なし
+// [戻値] 配列サイズ
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.Len: Integer;
+begin
+  if System.Length(Data.FDims) <> 1 then
+    raise Exception.Create('多次元配列です。次元を明示してください（例: Len(1)）。');
+  Result := Data.FDims.Items[1].High;  // 1base
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
 // [概要] 指定次元の最小インデックスを取得
 // [引数] 対象次元 1base
 // [戻値] 最小インデックス
@@ -1107,6 +1098,16 @@ end;
 function TFlexArray<T>.High(Dim: Integer): Integer;
 begin
   Result := Data.FDims.Items[Dim].High;
+end;
+
+//////////////////////////////////////////////////////////////////////////////////////
+// [概要] 指定次元の配列サイズを返す
+// [引数] 対象次元 1base
+// [戻値] 配列サイズ
+//////////////////////////////////////////////////////////////////////////////////////
+function TFlexArray<T>.Len(Dim: Integer): Integer;
+begin
+  Result := Data.FDims.Items[Dim].Len;
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1543,7 +1544,7 @@ end;
 // [使用例]
 //   Result := Matrix.InsertDimCore(1, 2, Another); // 2行目からAnotherを挿入
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.InsertDimCore(Dim: Integer; Index: Integer; const Another: TFlexArray<T>): TFlexArray<T>;
+function TFlexArray<T>.InsertCore(Dim: Integer; Index: Integer; const Another: TFlexArray<T>): TFlexArray<T>;
 var
   DimIdx: Integer;
   NewRanges: TFlexRanges;
@@ -1551,20 +1552,21 @@ var
   MappedIndexes: TFlexArray<Integer>;
   IsAnotherArea: TFlexArray<Boolean>;
   i, d, bak: Integer;
-  SelfDim, AnotherDim: TFlexDimension;
-  SelfArr, AnotherArr, DstArr: TArray<T>;
-  DstOffset: Integer;
+  SelfDim, AnotherDim, TargetDim: TFlexDimension;
+  SelfArr, AnotherArr, RetArr: TArray<T>;
+  InsertIdx: Integer;
 begin
   // 1-based to 0-based
   DimIdx := Dim - 1;
+  TargetDim := Self.Data.FDims[DimIdx];
 
   // パラメータ検証
   if (Dim < 1) or (Dim > Self.DimensionCount) then
     raise Exception.CreateFmt('InsertDimCore: 次元番号が範囲外です。Dim=%d, 次元数=%d', [Dim, Self.DimensionCount]);
 
-  if (Index < Self.Low(Dim)) or (Index > Self.High(Dim) + 1) then
+  if (Index < TargetDim.Low) or (Index > TargetDim.High + 1) then
     raise Exception.CreateFmt('InsertDimCore: 挿入位置が範囲外です。Index=%d, 範囲=%d..%d',
-      [Index, Self.Low(Dim), Self.High(Dim) + 1]);
+      [Index, TargetDim.Low, TargetDim.High + 1]);
 
   // Anotherの次元数チェック（Selfと同じ次元数が必要）
   if Another.DimensionCount <> Self.DimensionCount then
@@ -1587,48 +1589,31 @@ begin
   // 結果配列の形状を計算
   NewRanges := Self.GetRanges;
   // 対象次元のサイズを拡張（Selfのサイズ + Anotherのサイズ）
-  NewRanges[DimIdx] := [Self.Low(Dim), Self.High(Dim) + Another.Len(Dim)];
+  NewRanges[DimIdx] := [TargetDim.Low, TargetDim.High + Another.Len(Dim)];
 
   // 結果配列を作成
   Result := TFlexArray<T>.CreateFromRange(NewRanges);
   Result.InitializeCoords(ResultCoords);
+  RetArr := Result.Data.FArray;
+  SelfArr := Self.Data.FArray;
+  AnotherArr := Another.Data.FArray;
 
   if Dim = 1 then
   begin
-    SelfDim := Self.Data.FDims[0];
-    AnotherDim := Another.Data.FDims[0];
-    SelfArr := Self.Data.FArray;
-    AnotherArr := Another.Data.FArray;
-    DstArr := Result.Data.FArray;
-    DstOffset := 0;
-
-    // 前半部：挿入位置の手前
-    if Index > SelfDim.Low then
-    begin
-      DstOffset := CopyContiguousMemory(SelfArr, DstArr, SelfDim.Low, SelfDim.Low, SelfDim.Stride,
-        Index - SelfDim.Low, DstOffset);
-    end;
-
-    // 挿入ブロック：Another
-    DstOffset := CopyContiguousMemory(AnotherArr, DstArr, AnotherDim.Low, AnotherDim.Low, AnotherDim.Stride,
-      AnotherDim.Len, DstOffset);
-
-    // 後半部：挿入位置以降
-    if Index <= SelfDim.High then
-    begin
-      CopyContiguousMemory(SelfArr, DstArr, SelfDim.Low, Index, SelfDim.Stride,
-        SelfDim.High + 1 - Index, DstOffset);
-    end;
+    // メモリブロック単位で一括に高速Insert
+    Result.Data.FArray := Copy(Self.Data.FArray);
+    InsertIdx := (Index - TargetDim.Low) * TargetDim.Stride;
+    System.Insert(AnotherArr, Result.Data.FArray, InsertIdx);
   end
   else
   begin
     // MappedIndexesを作成 - Resultの次元インデックスをソースインデックスにマッピング
-    MappedIndexes := TFlexArray<Integer>.CreateFromRange(NewRanges[DimIdx]);
-    IsAnotherArea := TFlexArray<Boolean>.CreateFromRange(NewRanges[DimIdx]); // デフォルトはFalse
+    MappedIndexes := TFlexArray<Integer>.CreateFromRange([NewRanges[DimIdx]]);
+    IsAnotherArea := TFlexArray<Boolean>.CreateFromRange([NewRanges[DimIdx]]); // デフォルトはFalse
 
     // 前半部：Selfのインデックスをマッピング
-    d := Self.Low(Dim);
-    for i := Self.Low(Dim) to Index - 1 do
+    d := TargetDim.Low;
+    for i := TargetDim.Low to Index - 1 do
     begin
       MappedIndexes[d] := i;
       Inc(d);
@@ -1643,7 +1628,7 @@ begin
     end;
 
     // 後半部：Selfの残りのインデックスをマッピング
-    for i := Index to Self.High(Dim) do
+    for i := Index to TargetDim.High do
     begin
       MappedIndexes[d] := i;
       Inc(d);
@@ -1656,9 +1641,9 @@ begin
       ResultCoords[DimIdx] := MappedIndexes[bak];
 
       if IsAnotherArea[bak] then
-        Result.Data.FArray[i] := Another.ItemAt[ResultCoords]
+        RetArr[i] := AnotherArr[Another.GetOffset(ResultCoords)]
       else
-        Result.Data.FArray[i] := Self.ItemAt[ResultCoords];
+        RetArr[i] := SelfArr[Self.GetOffset(ResultCoords)];
 
       ResultCoords[DimIdx] := bak;
       Result.IncCoords(ResultCoords);
@@ -1710,129 +1695,127 @@ begin
   Result := Slice([[], [ColIndex]]);
 end;
 
-//////////////////////////////////////////////////////////////////////////////////////
-// [概要] 指定位置に行を挿入
-// [引数] RowIndex: 挿入位置, Another: 挿入する行配列
-// [戻値] 挿入後の新しい配列
-// [使用例] Matrix.InsertRow(2, NewRow)  // 2行目に挿入
-//////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.InsertRow(RowIndex: Integer; const Another: TFlexArray<T>): TFlexArray<T>;
-var
-  AnotherReady: TFlexArray<T>;
-begin
-  CheckDimension(2);
-  Another.CheckDimension(1);
-  if Another.Data.FDims.Items[1].Len <> Self.Data.FDims.Items[2].Len then
-    raise Exception.Create('InsertRow: 列数が一致しません');
+////////////////////////////////////////////////////////////////////////////////////////
+//// [概要] 指定位置に行を挿入
+//// [引数] RowIndex: 挿入位置, Another: 挿入する行配列
+//// [戻値] 挿入後の新しい配列
+//// [使用例] Matrix.InsertRow(2, NewRow)  // 2行目に挿入
+////////////////////////////////////////////////////////////////////////////////////////
+//function TFlexArray<T>.InsertRow(RowIndex: Integer; const Another: TFlexArray<T>): TFlexArray<T>;
+//var
+//  AnotherReady: TFlexArray<T>;
+//begin
+//  CheckDimension(2);
+//  Another.CheckDimension(1);
+//  if Another.Data.FDims.Items[1].Len <> Self.Data.FDims.Items[2].Len then
+//    raise Exception.Create('InsertRow: 列数が一致しません');
+//
+//  // constパラメータをローカル変数にコピー
+//  AnotherReady := Another;
+//
+//  // 1Dを2Dに昇格（次元1にサイズ1の次元を挿入）
+//  AnotherReady.PromoteDimension(1);
+//
+//  // BaseIndexを合わせる
+//  AnotherReady.Rebase(Self.Low(1));
+//
+//  Result := InsertDim(1, RowIndex, AnotherReady);
+//end;
 
-  // constパラメータをローカル変数にコピー
-  AnotherReady := Another;
-
-  // 1Dを2Dに昇格（次元1にサイズ1の次元を挿入）
-  AnotherReady.PromoteDimension(1);
-
-  // BaseIndexを合わせる
-  AnotherReady.Rebase(Self.Low(1));
-
-  Result := InsertDim(1, RowIndex, AnotherReady);
-end;
-
-//////////////////////////////////////////////////////////////////////////////////////
-// [概要] 指定位置に列を挿入
-// [引数] ColIndex: 挿入位置, Another: 挿入する列配列
-// [戻値] 挿入後の新しい配列
-// [使用例] Matrix.InsertCol(3, NewCol)  // 3列目に挿入
-//////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.InsertCol(ColIndex: Integer; const Another: TFlexArray<T>): TFlexArray<T>;
-var
-  AnotherReady: TFlexArray<T>;
-begin
-  CheckDimension(2);
-  Another.CheckDimension(1);
-  if Another.Data.FDims.Items[1].Len <> Self.Data.FDims.Items[1].Len then
-    raise Exception.Create('InsertCol: 行数が一致しません');
-
-  // constパラメータをローカル変数にコピー
-  AnotherReady := Another;
-
-  // 1Dを2Dに昇格（次元2にサイズ1の次元を挿入）
-  AnotherReady.PromoteDimension(2);
-
-  // BaseIndexを合わせる
-  AnotherReady.ReBase(Self.Low(1));
-
-  Result := InsertDim(2, ColIndex, AnotherReady);
-end;
+////////////////////////////////////////////////////////////////////////////////////////
+//// [概要] 指定位置に列を挿入
+//// [引数] ColIndex: 挿入位置, Another: 挿入する列配列
+//// [戻値] 挿入後の新しい配列
+//// [使用例] Matrix.InsertCol(3, NewCol)  // 3列目に挿入
+////////////////////////////////////////////////////////////////////////////////////////
+//function TFlexArray<T>.InsertCol(ColIndex: Integer; const Another: TFlexArray<T>): TFlexArray<T>;
+//var
+//  AnotherReady: TFlexArray<T>;
+//begin
+//  CheckDimension(2);
+//  Another.CheckDimension(1);
+//  if Another.Data.FDims.Items[1].Len <> Self.Data.FDims.Items[1].Len then
+//    raise Exception.Create('InsertCol: 行数が一致しません');
+//
+//  // constパラメータをローカル変数にコピー
+//  AnotherReady := Another;
+//
+//  // 1Dを2Dに昇格（次元2にサイズ1の次元を挿入）
+//  AnotherReady.PromoteDimension(2);
+//
+//  // BaseIndexを合わせる
+//  AnotherReady.ReBase(Self.Low(1));
+//
+//  Result := InsertDim(2, ColIndex, AnotherReady);
+//end;
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 指定位置に1D配列を行として挿入
-// [引数] RowIndex: 挿入位置, Items: 挿入する1D配列
+// [引数] RowIndex: 挿入位置, Arr: 挿入する配列
 // [戻値] 挿入後の新しい配列
-// [使用例] Matrix.InsertRow(2, [1,2,3,4])  // 2行目に1D配列を挿入
+// [使用例] Matrix.InsertRow(2, [1,2,3,4])  // 2行目に挿入
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.InsertRow(RowIndex: Integer; const Items: TArray<T>): TFlexArray<T>;
+function TFlexArray<T>.InsertRow(RowIndex: Integer; const AArray: TArray<T>): TFlexArray<T>;
 var
   Row2D: TFlexArray<T>;
 begin
   CheckDimension(2);
   // 1D配列を2D配列に昇格
-  Row2D := TFlexArray<T>.CreateFromArray(Items);
-  Row2D.Reshape([1, Length(Items)], 1);
-  Result := InsertDim(1, RowIndex, Row2D);
+  Row2D := TFlexArray<T>.ViewFromArray(AArray).Reshape([1, Length(AArray)], Self.Low(2));
+  Result := Insert(1, RowIndex, Row2D);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 指定位置に1D配列を列として挿入
-// [引数] ColIndex: 挿入位置, Items: 挿入する1D配列
+// [引数] ColIndex: 挿入位置, Arr: 挿入する配列
 // [戻値] 挿入後の新しい配列
-// [使用例] Matrix.InsertCol(3, [1,2,3])  // 3列目に1D配列を挿入
+// [使用例] Matrix.InsertCol(3, [1,2,3])  // 3列目に挿入
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.InsertCol(ColIndex: Integer; const Items: TArray<T>): TFlexArray<T>;
+function TFlexArray<T>.InsertCol(ColIndex: Integer; const AArray: TArray<T>): TFlexArray<T>;
 var
   Col2D: TFlexArray<T>;
 begin
   CheckDimension(2);
   // 1D配列を2D配列に昇格
-  Col2D := TFlexArray<T>.CreateFromArray(Items);
-  Col2D.Reshape([Length(Items), 1], 1);
-  Result := InsertDim(2, ColIndex, Col2D);
+  Col2D := TFlexArray<T>.ViewFromArray(AArray).Reshape([Length(AArray), 1], Self.Low(1));
+  Result := Insert(2, ColIndex, Col2D);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 指定位置に複数行を挿入
-// [引数] RowIndex: 挿入位置, Another: 挿入する行配列
+// [引数] RowIndex: 挿入位置, FlexArray: 挿入する行配列
 // [戻値] 挿入後の新しい配列
 // [使用例] Matrix.InsertRows(2, NewRows)  // 2行目から複数行を挿入
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.InsertRows(RowIndex: Integer; const Another: TFlexArray<T>): TFlexArray<T>;
+function TFlexArray<T>.InsertRows(RowIndex: Integer; const FlexArray: TFlexArray<T>): TFlexArray<T>;
 begin
   CheckDimension(2);
-  Result := InsertDim(1, RowIndex, Another);
+  Result := Insert(1, RowIndex, FlexArray);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 指定位置に複数列を挿入
-// [引数] ColIndex: 挿入位置, Another: 挿入する列配列
+// [引数] ColIndex: 挿入位置, FlexArray: 挿入する列配列
 // [戻値] 挿入後の新しい配列
 // [使用例] Matrix.InsertCols(3, NewCols)  // 3列目から複数列を挿入
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.InsertCols(ColIndex: Integer; const Another: TFlexArray<T>): TFlexArray<T>;
+function TFlexArray<T>.InsertCols(ColIndex: Integer; const FlexArray: TFlexArray<T>): TFlexArray<T>;
 begin
   CheckDimension(2);
-  Result := InsertDim(2, ColIndex, Another);
+  Result := Insert(2, ColIndex, FlexArray);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
 // [概要] 指定次元の指定位置に配列を挿入
-// [引数] Dim: 対象次元(1-based), Index: 挿入位置, Items: 挿入する配列
+// [引数] Dim: 対象次元(1-based), Index: 挿入位置, FlexArray: 挿入する配列
 // [戻値] 挿入後の新しい配列
 // [使用例]
 //   3D配列[2,3,4]に次元1の位置2で[1,4]配列を挿入 → [3,3,4]配列
 //   2D配列[3,4]に行2で[1,4]配列を挿入 → [4,4]配列
 //////////////////////////////////////////////////////////////////////////////////////
-function TFlexArray<T>.InsertDim(Dim: Integer; Index: Integer; const Items: TFlexArray<T>): TFlexArray<T>;
+function TFlexArray<T>.Insert(Dim: Integer; Index: Integer; const FlexArray: TFlexArray<T>): TFlexArray<T>;
 begin
-  Result := InsertDimCore(Dim, Index, Items);
+  Result := InsertCore(Dim, Index, FlexArray);
 end;
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1969,7 +1952,7 @@ begin
   else
   begin
     // MappedIndexesを作成 - Resultの次元インデックスをソースインデックスにマッピング
-    MappedIndexes := TFlexArray<Integer>.CreateFromRange(NewRanges[DimIdx]);
+    MappedIndexes := TFlexArray<Integer>.CreateFromRange([NewRanges[DimIdx]]);
 
     // 前半部：Selfのインデックスをマッピング（削除範囲の前）
     d := Self.Low(Dim);
@@ -2193,7 +2176,7 @@ begin
 //    AnotherReady.PromoteDimension(TargetDim);
 
   // 同一次元結合を実行
-  Result := SelfReady.InsertDim(TargetDim, SelfReady.High(TargetDim) + 1, AnotherReady);
+  Result := SelfReady.Insert(TargetDim, SelfReady.High(TargetDim) + 1, AnotherReady);
 
   // 元のベースインデックスに戻す
 //  if BaseIndex <> 1 then
