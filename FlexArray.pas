@@ -46,8 +46,6 @@ type
     class function FromArray(const Coords: array of Integer): TCoords; static;
   end;
 
-  procedure IncCoordsWithIndex(var Coords: TCoords; var Index: Integer; const Dims: TFlexDimensions);
-
   type
   TFlexArray<T> = record
   type
@@ -121,6 +119,7 @@ type
     function SliceIndexedCore(const Indexes: TArray<TSliceIndexes>; BaseIndex: Integer = 0): TFlexArray<T>;
     class function BroadcastCore(Source: TFlexArray<T>; Target: TFlexArray<T>; AFunc: TOperationFunc<T>): TFlexArray<T>; static;
     class function CopyContiguousMemory(const SrcArray: TArray<T>; var DstArray: TArray<T>; SrcLow, Index, Stride, Len, DstOffset: Integer): Integer; static;
+    class procedure IncCoordsWithIndex(var Coords: TCoords; var Index: Integer; const Dims: TFlexDimensions); static;
 
   public
     constructor Create(const Shapes: array of Integer; BaseIndex: Integer = 0); // nD
@@ -1523,7 +1522,7 @@ begin
     // Resultの座標イテレーションで、Selfからスライス範囲の要素を取得
     for i := 0 to Result.TotalSize - 1 do
     begin
-       Result.Data.FArray[i] := Self.ItemAt[ResultCoords];
+      Result.Data.FArray[i] := Self.ItemAt[ResultCoords];
 //       arr[i] := RetArr[GetOffset(ResultCoords)];
       Result.IncCoords(ResultCoords);
     end;
@@ -2061,44 +2060,39 @@ function TFlexArray<T>.TransposeCore(const NewDims: array of Integer): TFlexArra
 var
   i, d: Integer;
   NewRanges: TFlexRanges;
-  SrcDims, MappedDims: TFlexDimensions;
+  SrcDim: TFlexDimension;
+  MappedDims: TFlexDimensions;
   Coords: TCoords;
   idx: Integer;
   RetArr, SrcArr: TArray<T>;
 begin
-  SrcDims := Data.FDims;
 
   // 結果配列の形状を転置状態で構築
   SetLength(NewRanges, Length(NewDims));
-  for i := 0 to system.High(NewDims) do
-  begin
-    d := NewDims[i] - 1; // 1-based → 0-based
-    NewRanges[i] := [SrcDims[d].Low, SrcDims[d].High];
-  end;
-
   // 転置用Strideを構築
   SetLength(MappedDims, Length(NewDims));
   for i := 0 to system.High(NewDims) do
   begin
-    // Low/Lenは転置後の形状に合わせ、Strideのみ元の次元のものを使う
     d := NewDims[i] - 1; // 1-based → 0-based
-    MappedDims[i].Low    := NewRanges[i].Low;
-    MappedDims[i].Len    := NewRanges[i].Len;
+    SrcDim := Self.Data.FDims[d];
+    NewRanges[i] := [SrcDim.Low, SrcDim.High];
+    MappedDims[i].Low    := SrcDim.Low;
+    MappedDims[i].Len    := SrcDim.Len;
     // 元のStrideを使うことで、座標進行時に元配列の正しいメモリ位置を参照できる
-    MappedDims[i].Stride := SrcDims[d].Stride;
+    MappedDims[i].Stride := SrcDim.Stride;
   end;
 
   // 結果配列を作成
   Result := TFlexArray<T>.CreateFromRange(NewRanges);
-  RetArr := Result.Data.FArray;
   SrcArr := Self.Data.FArray;
+  RetArr := Result.Data.FArray;
 
   Result.InitializeCoords(Coords);
   idx := 0;
   for i := 0 to Result.TotalSize - 1 do
   begin
     RetArr[i] := SrcArr[idx];
-    IncCoordsWithIndex(Coords, idx, MappedDims);
+    TFlexArray<T>.IncCoordsWithIndex(Coords, idx, MappedDims);
   end;
 end;
 
@@ -2415,7 +2409,7 @@ end;
 // [戻値] なし
 // [備考] IncCoordsと同じ座標進め方。（高速化目的）
 //////////////////////////////////////////////////////////////////////////////////////
-procedure IncCoordsWithIndex(var Coords: TCoords; var Index: Integer; const Dims: TFlexDimensions);
+class procedure TFlexArray<T>.IncCoordsWithIndex(var Coords: TCoords; var Index: Integer; const Dims: TFlexDimensions);
 var
   d: Integer;
 begin
@@ -2484,11 +2478,16 @@ begin
       NewRanges[d] := [SrcDims[SrcIdx].Low, SrcDims[SrcIdx].High];
     end;
 
+    // len=1は空回りさせるためStrideに0を設定
     if SrcDims[SrcIdx].Len > 1 then
-      NewSrcDims[d].Stride := SrcDims[SrcIdx].Stride;
+      NewSrcDims[d].Stride := SrcDims[SrcIdx].Stride
+    else
+      NewSrcDims[d].Stride := 0;
 
     if TgtDims[TgtIdx].Len > 1 then
-      NewTgtDims[d].Stride := TgtDims[TgtIdx].Stride;
+      NewTgtDims[d].Stride := TgtDims[TgtIdx].Stride
+    else
+      NewTgtDims[d].Stride := 0;
 
     Dec(SrcIdx);
     Dec(TgtIdx);
@@ -2561,8 +2560,8 @@ begin
       RetArr[i] := AFunc(SrcArr[idxA], TgtArr[idxB]);
       // Low, LenはSourceもTargetも同じでSrcCoordsとTgtCoordsは絶えず同じ座標を指す
       // サイズ1の次元はStrideを0にして空回りさせ、他の次元は元のStrideを適用
-      IncCoordsWithIndex(SrcCoords, idxA, NewSrcDims);
-      IncCoordsWithIndex(TgtCoords, idxB, NewTgtDims);
+      TFlexArray<T>.IncCoordsWithIndex(SrcCoords, idxA, NewSrcDims);
+      TFlexArray<T>.IncCoordsWithIndex(TgtCoords, idxB, NewTgtDims);
     end;
   end;
 end;
